@@ -1,0 +1,15 @@
+batch_size: 6
+channels: 1
+input_size: 416
+epochs: 200
+IoU: 0.5
+CUDA: Enable
+path:
+  train: ./data/dataset/train.txt
+  test: ./data/dataset/test.txt
+  image: ./data/dataset/image/
+  classe: ./data/class/classes.txt
+  anchor: ./data/anchor/anchors.txt
+  saved:
+    train: ./saved/train/model.pt
+    detect: ./saved/detect/model.pt

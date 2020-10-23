@@ -1,0 +1,6 @@
+#!/bin/bash
+docker run -itd --name cell_detector\
+    -v $PWD/workspace:/workspace\
+    -e TERM=$TERM\
+    --gpus all\
+    hirotetsuhongo/cell_detector
