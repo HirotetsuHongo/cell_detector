@@ -5,16 +5,16 @@ from . util import Convolutional, Upsample
 
 
 class YOLOv3(nn.Module):
-    def __init__(self, filters):
+    def __init__(self, filters, classes):
         super(YOLOv3, self).__init__()
         self.darknet = Darknet(filters)
         self.upsample1 = nn.ModuleList([Convolutional(512, 128, 1),
                                         Upsample()])
         self.upsample2 = nn.ModuleList([Convolutional(1024, 256, 1),
                                         Upsample()])
-        self.scale1 = Convolutional(256, 255, 1)
-        self.scale2 = Convolutional(512, 255, 1)
-        self.scale3 = Convolutional(1024, 255, 1)
+        self.scale1 = Convolutional(256, 3 * (4 + 1 + classes), 1)
+        self.scale2 = Convolutional(512, 3 * (4 + 1 + classes), 1)
+        self.scale3 = Convolutional(1024, 3 * (4 + 1 + classes), 1)
         self.convs1 = nn.ModuleList([Convolutional(384, 128, 1),
                                      Convolutional(128, 256, 3),
                                      Convolutional(256, 128, 1),

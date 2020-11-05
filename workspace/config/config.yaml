@@ -1,5 +1,6 @@
 batch_size: 6
 channels: 1
+classes: 4
 input_size: 416
 epochs: 200
 IoU: 0.5
