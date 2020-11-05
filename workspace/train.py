@@ -8,12 +8,11 @@ from model import YOLOv3
 # Model
 model = YOLOv3(config['channels']).cuda()
 model = model.train(True)
-model.load_state_dict(torch.load(config['path']['initial_parameter']))
+if config['path']['initial_weight'] != False:
+    model.load_state_dict(torch.load(config['path']['initial_weight']))
 
 criterion = nn.MSELoss
-optimizer = optim.SGD(model.parameters(),
-                      lr=config['learning_rate'],
-                      momentum=config['momentum'])
+optimizer = optim.Adam(model.parameters())
 
 # Dataset
 

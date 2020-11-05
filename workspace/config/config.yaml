@@ -3,8 +3,6 @@ channels: 1
 input_size: 416
 epochs: 200
 IoU: 0.5
-learning_rate: 0.0000001
-momentum: 0.1
 CUDA: Enable
 path:
   train: /workspace/data/dataset/train.txt
@@ -12,5 +10,5 @@ path:
   image: /workspace/data/dataset/image/
   classes: /workspace/data/class/classes.txt
   anchor: /workspace/data/anchor/anchors.txt
-  saved: /workspace/saved/
-  initial_parameter: /workspace/initial_parameter/model.pt
+  weight: /workspace/weight/
+  initial_weight: False
