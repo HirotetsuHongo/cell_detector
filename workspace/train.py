@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from config import config
 from model import YOLOv3
+from postprocess import transform_feature_map
 
 
 # Model
@@ -19,7 +20,14 @@ optimizer = optim.Adam(model.parameters())
 # Train
 def train_step(x, target, model, criterion, optimizer):
     optimizer.zero_grad()
+    height, width = x.size()
+    assert height == width
+    size = height
     y1, y2, y3 = model(x)
+    y1, y2, y3 = [transform_feature_map(y, size, anchors[0], anchors[1], anchors[2])
+                  for y, anchors in [(y1, config['anchors'][0]),
+                                     (y2, config['anchors'][1]),
+                                     (y3, config['anchors'][2])]]
     loss = criterion(output, target)
     loss.backward()
     optimizer.step()

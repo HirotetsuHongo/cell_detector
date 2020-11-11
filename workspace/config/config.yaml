@@ -2,6 +2,10 @@ batch_size: 6
 channels: 1
 classes: 4
 input_size: 416
+anchors:
+  - [[10,13], [16,30], [33,23]]
+  - [[30,61], [62,45], [59,119]]
+  - [[116,90], [156,198], [373,326]]
 epochs: 200
 IoU: 0.5
 CUDA: Enable
