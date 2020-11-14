@@ -1,7 +1,8 @@
 import torch.nn as nn
 from torch import cat
 from . backbone import Darknet
-from . util import Convolutional, Upsample
+from . util import Convolutional, Upsample, transform_feature_map
+from config import config
 
 
 class YOLOv3(nn.Module):
@@ -62,5 +63,23 @@ class YOLOv3(nn.Module):
             x = layer(x)
 
         scale1 = self.scale1(x)
+
+        scale1 = transform_feature_map(scale1,
+                                       config['input_size'],
+                                       config['anchors'][0][0],
+                                       config['anchors'][0][1],
+                                       config['anchors'][0][2])
+
+        scale2 = transform_feature_map(scale2,
+                                       config['input_size'],
+                                       config['anchors'][1][0],
+                                       config['anchors'][1][1],
+                                       config['anchors'][1][2])
+
+        scale3 = transform_feature_map(scale3,
+                                       config['input_size'],
+                                       config['anchors'][2][0],
+                                       config['anchors'][2][1],
+                                       config['anchors'][2][2])
 
         return scale1, scale2, scale3
