@@ -8,6 +8,7 @@ anchors:
   - [[116,90], [156,198], [373,326]]
 epochs: 200
 IoU: 0.5
+confidence: 0.8
 CUDA: Enable
 path:
   train: /workspace/data/dataset/train.txt

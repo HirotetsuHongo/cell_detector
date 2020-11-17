@@ -1,8 +1,8 @@
+import torch
 import torch.nn as nn
 from torch import cat
 from . backbone import Darknet
-from . util import Convolutional, Upsample, transform_feature_map
-from config import config
+from . util import Convolutional, Upsample
 
 
 class YOLOv3(nn.Module):
@@ -64,22 +64,21 @@ class YOLOv3(nn.Module):
 
         scale1 = self.scale1(x)
 
-        scale1 = transform_feature_map(scale1,
-                                       config['input_size'],
-                                       config['anchors'][0][0],
-                                       config['anchors'][0][1],
-                                       config['anchors'][0][2])
+        # transform and concat scales
+        x = self.transform((scale1, scale2, scale3))
 
-        scale2 = transform_feature_map(scale2,
-                                       config['input_size'],
-                                       config['anchors'][1][0],
-                                       config['anchors'][1][1],
-                                       config['anchors'][1][2])
+        # extract bboxes
+        # x = self.extract_bboxes(x)
 
-        scale3 = transform_feature_map(scale3,
-                                       config['input_size'],
-                                       config['anchors'][2][0],
-                                       config['anchors'][2][1],
-                                       config['anchors'][2][2])
+        return x, scale1, scale2, scale3
 
-        return scale1, scale2, scale3
+    def transform(self, scales):
+        scales = [scale.transpose(1, 3)
+                       .reshape(scale.size(0),
+                                scale.size(3)*scale.size(2) * 3,
+                                scale.size(1) // 3)
+                  for scale in scales]
+        return torch.cat(scales, 1)
+
+    def extract_bboxes(self, x):
+        return x
