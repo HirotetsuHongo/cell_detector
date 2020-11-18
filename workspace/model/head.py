@@ -6,7 +6,7 @@ from . util import Convolutional, Upsample
 
 
 class YOLOv3(nn.Module):
-    def __init__(self, num_filters, num_classes):
+    def __init__(self, num_filters, num_classes, confidency):
         super(YOLOv3, self).__init__()
         self.darknet = Darknet(num_filters)
         self.upsample1 = nn.ModuleList([Convolutional(512, 128, 1),
@@ -34,8 +34,25 @@ class YOLOv3(nn.Module):
                                      Convolutional(512, 1024, 3),
                                      Convolutional(1024, 512, 1),
                                      Convolutional(512, 1024, 3)])
+        self.confidency = confidency
 
     def forward(self, x):
+        def transform(scales):
+            scales = [scale.transpose(1, 3)
+                           .reshape(scale.size(0),
+                                    scale.size(3) * scale.size(2) * 3,
+                                    scale.size(1) // 3)
+                      for scale in scales]
+            return torch.cat(scales, 1)
+
+        def extract_bboxes(x, confidency):
+            x = filter_feature(lambda x: x[:, :, 4] > confidency, x)
+            return x
+
+        def filter_feature(fn, x):
+            x = x * fn(x).float().unsqueeze(2)
+            return x
+
         scale1, scale2, x = self.darknet(x)
 
         # Scale3
@@ -65,20 +82,9 @@ class YOLOv3(nn.Module):
         scale1 = self.scale1(x)
 
         # transform and concat scales
-        x = self.transform((scale1, scale2, scale3))
+        x = transform((scale1, scale2, scale3))
 
         # extract bboxes
-        # x = self.extract_bboxes(x)
+        x = extract_bboxes(x, self.confidency)
 
-        return x, scale1, scale2, scale3
-
-    def transform(self, scales):
-        scales = [scale.transpose(1, 3)
-                       .reshape(scale.size(0),
-                                scale.size(3)*scale.size(2) * 3,
-                                scale.size(1) // 3)
-                  for scale in scales]
-        return torch.cat(scales, 1)
-
-    def extract_bboxes(self, x):
         return x
