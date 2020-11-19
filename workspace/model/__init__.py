@@ -1,1 +1,1 @@
-from model.head import YOLOv3
+from model.head import Net

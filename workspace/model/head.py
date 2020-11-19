@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-from torch import cat
 from . backbone import Darknet
 from . util import Convolutional, Upsample
 
 
 class YOLOv3(nn.Module):
-    def __init__(self, num_filters, num_classes, confidency):
+    def __init__(self, num_filters, num_classes):
         super(YOLOv3, self).__init__()
         self.darknet = Darknet(num_filters)
         self.upsample1 = nn.ModuleList([Convolutional(512, 128, 1),
@@ -34,25 +33,8 @@ class YOLOv3(nn.Module):
                                      Convolutional(512, 1024, 3),
                                      Convolutional(1024, 512, 1),
                                      Convolutional(512, 1024, 3)])
-        self.confidency = confidency
 
     def forward(self, x):
-        def transform(scales):
-            scales = [scale.transpose(1, 3)
-                           .reshape(scale.size(0),
-                                    scale.size(3) * scale.size(2) * 3,
-                                    scale.size(1) // 3)
-                      for scale in scales]
-            return torch.cat(scales, 1)
-
-        def extract_bboxes(x, confidency):
-            x = filter_feature(lambda x: x[:, :, 4] > confidency, x)
-            return x
-
-        def filter_feature(fn, x):
-            x = x * fn(x).float().unsqueeze(2)
-            return x
-
         scale1, scale2, x = self.darknet(x)
 
         # Scale3
@@ -65,7 +47,7 @@ class YOLOv3(nn.Module):
         for layer in self.upsample2:
             x = layer(x)
 
-        x = cat((x, scale2), dim=1)
+        x = torch.cat((x, scale2), 1)
         for layer in self.convs2:
             x = layer(x)
 
@@ -75,16 +57,36 @@ class YOLOv3(nn.Module):
         for layer in self.upsample1:
             x = layer(x)
 
-        x = cat((x, scale1), dim=1)
+        x = torch.cat((x, scale1), 1)
         for layer in self.convs1:
             x = layer(x)
 
         scale1 = self.scale1(x)
 
-        # transform and concat scales
-        x = transform((scale1, scale2, scale3))
+        return scale1, scale2, scale3
 
-        # extract bboxes
-        x = extract_bboxes(x, self.confidency)
+
+class Net(nn.Module):
+    def __init__(self, num_filters, num_classes, confidency):
+        super(Net, self).__init__()
+        self.yolov3 = YOLOv3(num_filters, num_classes)
+        self.confidency = confidency
+
+    def forward(self, x):
+        # apply YOLOv3
+        x = self.yolov3(x)
+
+        # reshape feature maps
+        x = [x.transpose(1, 3)
+              .reshape(x.size(0),
+                       x.size(3) * x.size(2) * 3,
+                       x.size(1) // 3)
+             for x in x]
+
+        # concatnate feature maps into single feature map
+        x = torch.cat(x, 1)
+
+        # fill cells under confidency with zero
+        # x = x[torch.all(x[:, :, 4] > self.confidency, axis=1)]
 
         return x
