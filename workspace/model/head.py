@@ -36,12 +36,8 @@ class YOLOv3(nn.Module):
                                      Convolutional(512, 1024, 3)])
 
     def forward(self, x):
-        t0 = time.time()
         scale1, scale2, x = self.darknet(x)
-        t = time.time()
-        print('Darknet: {:.5f}'.format(t-t0))
 
-        t0 = time.time()
         # Scale3
         for layer in self.convs3:
             x = layer(x)
@@ -67,8 +63,6 @@ class YOLOv3(nn.Module):
             x = layer(x)
 
         scale1 = self.scale1(x)
-        t = time.time()
-        print('YOLOv3 expect Darknet: {:.5f}'.format(t-t0))
 
         return scale1, scale2, scale3
 
@@ -89,10 +83,10 @@ class Net(nn.Module):
         x = self.yolov3(x)
         x = list(x)
         t1 = time.time()
-        print('YOLOv3: {:.5f} sec'.format(t1-t0))
+        print('YOLOv3: {:.5f} ms'.format((t1-t0)*1000))
 
         # transform feature maps
-        tt0 = time.time()
+        t0 = time.time()
         for i in range(len(x)):
             # define variables
             batch_size = x[i].size(0)
@@ -102,64 +96,46 @@ class Net(nn.Module):
             bbox_size = x[i].size(1) // num_anchors
 
             # reshape the feature map
-            t0 = time.time()
             x[i] = x[i].transpose(1, 3)
             x[i] = x[i].reshape(batch_size,
                                 height*width*num_anchors,
                                 bbox_size)
-            t1 = time.time()
-            print('reshape: {:.5f} sec'.format(t1-t0))
 
             # apply sigmoid to the confidency
             # and classes probability distribution
-            t0 = time.time()
             x[i][:, :, 4:] = torch.sigmoid(x[i][:, :, 4:])
-            t1 = time.time()
-            print('sigmoid confidency and probability: {:.5f} sec'
-                  .format(t1-t0))
 
             # apply sigmoid to the tx and ty
-            t0 = time.time()
             x[i][:, :, 0] = torch.sigmoid(x[i][:, :, 0])
             x[i][:, :, 1] = torch.sigmoid(x[i][:, :, 1])
-            t1 = time.time()
-            print('sigmoid tx and ty: {:.5f} sec'.format(t1-t0))
 
             # add cx and cy to tx and ty
-            t0 = time.time()
+            tt0 = time.time()
             cx = torch.arange(width)
             cy = torch.arange(height)
             if self.CUDA:
                 cx = cx.cuda()
                 cy = cy.cuda()
+            tt1 = time.time()
+            print('arange: {:.5f} ms'.format((tt1-tt0)*1000))
             cx, cy = torch.meshgrid(cx, cy)
-            cx = cx.reshape(-1, 1)
-            cy = cy.reshape(-1, 1)
-            cxy = torch.cat((cx, cy), 1) \
-                       .repeat(1, num_anchors) \
-                       .reshape(-1, 2) \
-                       .unsqueeze(0)
+            cx = cx.unsqueeze(2)
+            cy = cy.unsqueeze(2)
+            cxy = torch.cat((cx, cy), 2)
+            cxy = cxy.repeat(1, 1, num_anchors)
+            cxy = cxy.reshape(-1, 2)
             x[i][:, :, :2] += cxy
-            t1 = time.time()
-            print('add cx and cy: {:.5f} sec'.format(t1-t0))
 
             # normalize
-            t0 = time.time()
             x[i][:, :, :4] *= (self.input_height // height)
-            t1 = time.time()
-            print('normalize: {:.5f} sec'.format(t1-t0))
 
-        tt1 = time.time()
-        print('transform: {:.5f} sec'.format(tt1-tt0))
+        t1 = time.time()
+        print('transform: {:.5f} ms'.format((t1-t0)*1000))
 
         # concatnate feature maps into single feature map
         t0 = time.time()
         x = torch.cat(x, 1)
         t1 = time.time()
-        print('concatenate: {:.5f} sec'.format(t1-t0))
+        print('concatenate: {:.5f} ms'.format((t1-t0)*1000))
 
         return x
-
-
-x = torch.randn(6, 1, 416, 416).cuda()
-f = Net(416, 416, 1, 4, 0.5).cuda()
