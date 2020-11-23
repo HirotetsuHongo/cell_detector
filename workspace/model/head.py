@@ -1,4 +1,3 @@
-import time
 import torch
 import torch.nn as nn
 from . backbone import Darknet
@@ -68,25 +67,24 @@ class YOLOv3(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, input_height, input_width, num_filters,
-                 num_classes, confidency, CUDA=True):
+    def __init__(self, input_height, input_width, num_filters, num_classes,
+                 anchors, confidency_threshold=0.5, CUDA=True):
         super(Net, self).__init__()
         self.yolov3 = YOLOv3(num_filters, num_classes)
         self.input_height = input_height
         self.input_width = input_width
-        self.confidency = confidency
+        self.anchors = torch.Tensor(anchors)
+        self.confidency = confidency_threshold
         self.CUDA = CUDA
+        if self.CUDA:
+            self.anchors = self.anchors.cuda()
 
     def forward(self, x):
         # apply YOLOv3
-        t0 = time.time()
         x = self.yolov3(x)
         x = list(x)
-        t1 = time.time()
-        print('YOLOv3: {:.5f} ms'.format((t1-t0)*1000))
 
         # transform feature maps
-        t0 = time.time()
         for i in range(len(x)):
             # define variables
             batch_size = x[i].size(0)
@@ -110,14 +108,11 @@ class Net(nn.Module):
             x[i][:, :, 1] = torch.sigmoid(x[i][:, :, 1])
 
             # add cx and cy to tx and ty
-            tt0 = time.time()
             cx = torch.arange(width)
             cy = torch.arange(height)
             if self.CUDA:
                 cx = cx.cuda()
                 cy = cy.cuda()
-            tt1 = time.time()
-            print('arange: {:.5f} ms'.format((tt1-tt0)*1000))
             cx, cy = torch.meshgrid(cx, cy)
             cx = cx.unsqueeze(2)
             cy = cy.unsqueeze(2)
@@ -126,16 +121,42 @@ class Net(nn.Module):
             cxy = cxy.reshape(-1, 2)
             x[i][:, :, :2] += cxy
 
-            # normalize
-            x[i][:, :, :4] *= (self.input_height // height)
+            # log space transform height and width using anchors
+            anchors = self.anchors[i].repeat(height*width, 1).unsqueeze(0)
+            x[i][:, :, 2:4] = torch.exp(x[i][:, :, 2:4])
+            x[i][:, :, 2:4] *= anchors
 
-        t1 = time.time()
-        print('transform: {:.5f} ms'.format((t1-t0)*1000))
+            # normalize
+            x[i][:, :, 0] *= (self.input_width // width)
+            x[i][:, :, 1] *= (self.input_height // height)
+            x[i][:, :, 2] *= (self.input_width // width)
+            x[i][:, :, 3] *= (self.input_height // height)
 
         # concatnate feature maps into single feature map
-        t0 = time.time()
         x = torch.cat(x, 1)
-        t1 = time.time()
-        print('concatenate: {:.5f} ms'.format((t1-t0)*1000))
+
+        # split by batch size
+        x = [x[i] for i in range(x.size(0))]
+
+        for i in range(len(x)):
+            # confidence thresholding
+            mask = (x[i][:, 4] > self.confidency).unsqueeze(1)
+            x[i] = torch.masked_select(x[i], mask).reshape(-1, 9)
+
+            # convert bbox part
+            # from (center x, center y, height, width)
+            # to (xmin, ymin, xman, ymax)
+
+        # concatnate feature maps into single feature map
+        x = torch.cat(x, 0)
 
         return x
+
+
+# x = torch.randn(6, 1, 416, 416).cuda()
+# 
+# anchors = [[[10, 13], [16, 30], [33, 23]],
+#            [[30, 61], [62, 45], [59, 119]],
+#            [[116, 90], [156, 198], [373, 326]]]
+# 
+# f = Net(416, 416, 1, 4, anchors).cuda()
