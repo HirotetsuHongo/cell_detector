@@ -1,3 +1,4 @@
+import time
 import torch
 import torch.nn as nn
 from . backbone import Darknet
@@ -138,25 +139,42 @@ class Net(nn.Module):
         # split by batch size
         x = [x[i] for i in range(x.size(0))]
 
+        t0 = time.time()
         for i in range(len(x)):
-            # confidence thresholding
+            # threshold by confidency
             mask = (x[i][:, 4] > self.confidency).unsqueeze(1)
             x[i] = torch.masked_select(x[i], mask).reshape(-1, 9)
 
             # convert bbox part
-            # from (center x, center y, height, width)
-            # to (xmin, ymin, xman, ymax)
+            # from (center x, center y, width, height)
+            # to (xmin, ymin, xmax, ymax)
+            bbox = torch.zeros(x[i].size(0), 4)
+            bbox[:, 0] = (x[i][:, 0] - x[i][:, 2]/2)
+            bbox[:, 1] = (x[i][:, 0] + x[i][:, 2]/2)
+            bbox[:, 2] = (x[i][:, 1] - x[i][:, 3]/2)
+            bbox[:, 3] = (x[i][:, 1] + x[i][:, 3]/2)
+            x[i][:, :4] = bbox
+
+            # select class
+            max_class, max_class_id = torch.max(x[i][:, 5:], 1)
+            max_class = max_class.unsqueeze(1)
+            max_class_id = max_class_id.unsqueeze(1)
+            x[i] = torch.cat((x[i][:, :5], max_class, max_class_id), 1)
+
+        t1 = time.time()
+        print("Elapsed time of precesses per a picture: {:.3f} ms"
+              .format((t1-t0)*1000))
 
         # concatnate feature maps into single feature map
-        x = torch.cat(x, 0)
+        # x = torch.cat(x, 0)
 
         return x
 
 
-# x = torch.randn(6, 1, 416, 416).cuda()
-# 
-# anchors = [[[10, 13], [16, 30], [33, 23]],
-#            [[30, 61], [62, 45], [59, 119]],
-#            [[116, 90], [156, 198], [373, 326]]]
-# 
-# f = Net(416, 416, 1, 4, anchors).cuda()
+x = torch.randn(6, 1, 416, 416).cuda()
+
+anchors = [[[10, 13], [16, 30], [33, 23]],
+           [[30, 61], [62, 45], [59, 119]],
+           [[116, 90], [156, 198], [373, 326]]]
+
+f = Net(416, 416, 1, 4, anchors).cuda()
