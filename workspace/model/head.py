@@ -69,13 +69,17 @@ class YOLOv3(nn.Module):
 
 class Net(nn.Module):
     def __init__(self, input_height, input_width, num_filters, num_classes,
-                 anchors, confidency_threshold=0.5, CUDA=True):
+                 anchors, confidency_threshold=0.5, iou_threshold=0.4,
+                 CUDA=True):
         super(Net, self).__init__()
         self.yolov3 = YOLOv3(num_filters, num_classes)
         self.input_height = input_height
         self.input_width = input_width
+        self.num_filters = num_filters
+        self.num_classes = num_classes
         self.anchors = torch.Tensor(anchors)
         self.confidency = confidency_threshold
+        self.iou = iou_threshold
         self.CUDA = CUDA
         if self.CUDA:
             self.anchors = self.anchors.cuda()
@@ -139,16 +143,15 @@ class Net(nn.Module):
         # split by batch size
         x = [x[i] for i in range(x.size(0))]
 
-        t0 = time.time()
         for i in range(len(x)):
             # threshold by confidency
-            mask = (x[i][:, 4] > self.confidency).unsqueeze(1)
-            x[i] = torch.masked_select(x[i], mask).reshape(-1, 9)
+            conf_mask = x[i][:, 4] > self.confidency
+            x[i] = x[i][conf_mask, :]
 
             # convert bbox part
             # from (center x, center y, width, height)
             # to (xmin, ymin, xmax, ymax)
-            bbox = torch.zeros(x[i].size(0), 4)
+            bbox = torch.empty(x[i].size(0), 4)
             bbox[:, 0] = (x[i][:, 0] - x[i][:, 2]/2)
             bbox[:, 1] = (x[i][:, 0] + x[i][:, 2]/2)
             bbox[:, 2] = (x[i][:, 1] - x[i][:, 3]/2)
@@ -156,25 +159,51 @@ class Net(nn.Module):
             x[i][:, :4] = bbox
 
             # select class
-            max_class, max_class_id = torch.max(x[i][:, 5:], 1)
-            max_class = max_class.unsqueeze(1)
+            max_class_id = torch.max(x[i][:, 5:], 1)[1]
             max_class_id = max_class_id.unsqueeze(1)
-            x[i] = torch.cat((x[i][:, :5], max_class, max_class_id), 1)
+            x[i] = torch.cat((x[i][:, :5], max_class_id), 1)
 
-        t1 = time.time()
-        print("Elapsed time of precesses per a picture: {:.3f} ms"
-              .format((t1-t0)*1000))
+            # non-maximum suppression
+            # bbox mask
+            nms_mask = torch.logical_and(
+                # bbox mask
+                bbox_iou(x[i].unsqueeze(-1), x[i]) > self.iou,
+                # id mask
+                x[i][:, 5].unsqueeze(-1) == x[i][:, 5])
+            nms_mask = torch.logical_and(
+                nms_mask,
+                # confidency mask
+                x[i][:, 4].unsqueeze(-1) < x[i][:, 4])
+            nms_mask = torch.any(nms_mask, 1)
+            x[i] = x[i][nms_mask, :]
 
         # concatnate feature maps into single feature map
-        # x = torch.cat(x, 0)
+        x = torch.cat(x, 0)
 
         return x
 
 
-x = torch.randn(6, 1, 416, 416).cuda()
+def bbox_iou(bbox1, bbox2):
+    """
+    Returns intersection over union of bbox1 and bbox2.
+    """
+    xmin1, ymin1 = bbox1[:, 0], bbox1[:, 1]
+    xmax1, ymax1 = bbox1[:, 2], bbox1[:, 3]
+    xmin2, ymin2 = bbox2[:, 0], bbox2[:, 1]
+    xmax2, ymax2 = bbox2[:, 2], bbox2[:, 3]
+    ixmin = torch.max(xmin1, xmin2)
+    iymin = torch.max(ymin1, ymin2)
+    ixmax = torch.min(xmax1, xmax2)
+    iymax = torch.min(ymax1, ymax2)
 
-anchors = [[[10, 13], [16, 30], [33, 23]],
-           [[30, 61], [62, 45], [59, 119]],
-           [[116, 90], [156, 198], [373, 326]]]
+    bbox1_area = \
+        torch.clamp(xmax1 - xmin1 + 1, 0) * torch.clamp(ymax1 - ymin1 + 1, 0)
+    bbox2_area = \
+        torch.clamp(xmax2 - xmin2 + 1, 0) * torch.clamp(ymax2 - ymin2 + 1, 0)
+    inter_area = \
+        torch.clamp(ixmax - ixmin + 1, 0) * torch.clamp(iymax - iymin + 1, 0)
+    union_area = bbox1_area + bbox2_area - inter_area
 
-f = Net(416, 416, 1, 4, anchors).cuda()
+    iou = inter_area / union_area
+
+    return iou
