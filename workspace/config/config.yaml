@@ -1,20 +1,22 @@
 batch_size: 6
-channels: 1
-classes: 4
+num_channels: 1
+classes:
+    - A
+    - B
+    - C
 input_size: 416
 anchors:
   - [[10,13], [16,30], [33,23]]
   - [[30,61], [62,45], [59,119]]
   - [[116,90], [156,198], [373,326]]
-epochs: 200
-IoU: 0.5
-confidence: 0.8
-CUDA: Enable
+num_epochs: 200
+TP_IoU: 0.5
+NMS_IoU: 0.4
+objectness: 0.8
+CUDA: True
 path:
   train: /workspace/data/dataset/train.txt
   test: /workspace/data/dataset/test.txt
   image: /workspace/data/dataset/image/
-  classes: /workspace/data/class/classes.txt
-  anchor: /workspace/data/anchor/anchors.txt
   weight: /workspace/weight/
   initial_weight: False
