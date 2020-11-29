@@ -2,7 +2,7 @@ import torch
 
 
 def postprocess(scales, anchors, input_height, input_width,
-                objectness_threshold, iou_threshold, CUDA=True):
+                objectness_threshold, iou_threshold, cuda):
     """
     postprocesses of YOLOv3.
     """
@@ -24,7 +24,7 @@ def postprocess(scales, anchors, input_height, input_width,
         # add center coordinate of bbox
         grid_x = torch.arange(width)
         grid_y = torch.arange(height)
-        if CUDA:
+        if cuda:
             grid_x = grid_x.cuda()
             grid_y = grid_y.cuda()
         center_x, center_y = torch.meshgrid(grid_x, grid_y)
@@ -43,7 +43,7 @@ def postprocess(scales, anchors, input_height, input_width,
         # use anchors
         anchors = [[a[0] / stride[0], a[1] / stride[1]] for a in anchors]
         anchors = torch.tensor(anchors)
-        if CUDA:
+        if cuda:
             anchors = anchors.cuda()
         anchors = anchors.repeat(width * height, 1)
         scale[:, :, 2:4] *= anchors

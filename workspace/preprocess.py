@@ -12,6 +12,11 @@ def load_image(path, height, width, cuda):
     if cuda:
         image = image.cuda()
 
+    if len(image.size()) == 2:
+        image = image.unsqueeze(0)
+    elif len(image.size()) != 3:
+        raise Exception("Unexpected image size")
+
     return image
 
 
