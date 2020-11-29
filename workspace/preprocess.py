@@ -1,25 +1,36 @@
+import csv
 import numpy as np
 import cv2
 import torch
 
 
-def load_images(paths):
-    images = [cv2.imread(path, -1).astype(np.float) for path in paths]
-    return images
+def load_image(path, height, width, cuda):
+    image = cv2.imread(path, -1)
+    image = image.astype(np.float)
+    image = np.resize(image, (height, width))
+    image = torch.from_numpy(image)
+    if cuda:
+        image = image.cuda()
+
+    return image
 
 
-def preprocess(images, height, width, CUDA=True):
-    # resize
-    images = np.array([cv2.resize(image, (height, width)) for image in images])
+def load_bbox(path, height, width, cuda):
+    bboxes = []
+    with open(path, 'r') as f:
+        rows = csv.reader(f, delimiter=' ')
+        for row in rows:
+            [cid, x, y, w, h] = [np.float(e) for e in row]
+            bbox = np.array([[x * width,
+                              y * height,
+                              w * width,
+                              h * height,
+                              1,
+                              cid]])
+            bboxes.append(bbox)
+    bboxes = np.concatenate(bboxes, axis=0)
+    bboxes = torch.from_numpy(bboxes)
+    if cuda:
+        bboxes = bboxes.cuda()
 
-    # convert into tensor
-    images = torch.from_numpy(images)
-    if CUDA:
-        images = images.cuda()
-
-    if len(images.size()) == 3:
-        images = images.unsqueeze(1)
-    elif len(images.size()) != 4:
-        raise ValueError('Unexcected torch.size.')
-
-    return images
+    return bboxes
