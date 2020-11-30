@@ -2,10 +2,10 @@ import torch
 
 
 def bbox_iou(bboxes1, bboxes2):
-    x1, y1 = bboxes1[:, 0], bboxes1[:, 1]
-    w1, h1 = bboxes1[:, 2], bboxes1[:, 3]
-    x2, y2 = bboxes2[:, 0], bboxes2[:, 1]
-    w2, h2 = bboxes2[:, 2], bboxes2[:, 3]
+    x1, y1 = bboxes1[..., 0], bboxes1[..., 1]
+    w1, h1 = bboxes1[..., 2], bboxes1[..., 3]
+    x2, y2 = bboxes2[..., 0], bboxes2[..., 1]
+    w2, h2 = bboxes2[..., 2], bboxes2[..., 3]
 
     xmin1 = x1 - w1 * 0.5
     ymin1 = y1 - w1 * 0.5
@@ -33,5 +33,17 @@ def bbox_iou(bboxes1, bboxes2):
     return iou
 
 
-def loss(detected_bboxes, correct_bboxes):
+def loss(outputs, targets, iou):
+    num_outputs = outputs.size(0)
+    num_targets = outputs.size(0)
+
+    mask = bbox_iou(outputs.unsqueeze(-1), targets) >= iou
+
+    outputs = outputs.repeat(num_targets, 1)
+    outputs = outputs.reshape(num_targets, num_outputs, 1, -1)
+    outputs = outputs.transpose(0, 1)
+
+    targets = targets.repeat(num_outputs, 1)
+    targets = targets.reshape(num_outputs, num_targets, 1, -1)
+
     return

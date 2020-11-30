@@ -12,9 +12,10 @@ import postprocess as post
 batch_size = cfg.config['batch_size']
 num_channels = cfg.config['num_channels']
 classes = cfg.config['classes']
+num_classes = len(classes)
 height = cfg.config['height']
 width = cfg.config['width']
-num_classes = len(classes)
+anchors = cfg.config['anchors']
 num_epochs = cfg.config['epochs']
 tp_iou = cfg.config['TP_IoU']
 nms_iou = cfg.config['NMS_IoU']
@@ -76,3 +77,13 @@ test_bboxes = load_bboxes(test_dir)
 
 
 # Train
+def train_core(images, bboxes):
+    num_images = images.size(0)
+    detected_bboxes = net(images)
+    detected_bboxes = post.postprocess(detected_bboxes,
+                                       anchors,
+                                       height,
+                                       width,
+                                       objectness,
+                                       nms_iou,
+                                       cuda)
