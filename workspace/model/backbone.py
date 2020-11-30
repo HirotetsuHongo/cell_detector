@@ -3,9 +3,9 @@ from . util import Convolutional, Residual
 
 
 class Darknet(nn.Module):
-    def __init__(self, filters):
+    def __init__(self, num_channels):
         super(Darknet, self).__init__()
-        self.layers1 = nn.ModuleList([Convolutional(filters, 32, 3),
+        self.layers1 = nn.ModuleList([Convolutional(num_channels, 32, 3),
                                       Convolutional(32, 64, 3, stride=2),
                                       Residual(64, 32),
                                       Convolutional(64, 128, 3, stride=2),

@@ -5,9 +5,9 @@ from . util import Convolutional, Upsample
 
 
 class YOLOv3(nn.Module):
-    def __init__(self, num_filters, num_classes):
+    def __init__(self, num_channels, num_classes):
         super(YOLOv3, self).__init__()
-        self.darknet = Darknet(num_filters)
+        self.darknet = Darknet(num_channels)
         self.upsample1 = nn.ModuleList([Convolutional(512, 128, 1),
                                         Upsample()])
         self.upsample2 = nn.ModuleList([Convolutional(1024, 256, 1),
