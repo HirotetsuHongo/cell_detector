@@ -1,4 +1,5 @@
 import torch
+import loss
 
 
 def postprocess(scales, anchors, input_height, input_width,
@@ -65,27 +66,13 @@ def postprocess(scales, anchors, input_height, input_width,
         return image
 
     def non_maximum_suppress(image, iou_threshold):
-        iou_mask = bbox_iou(image.unsqueeze(-1), image) > iou_threshold
+        iou_mask = loss.bbox_iou(image.unsqueeze(-1), image) > iou_threshold
         conf_mask = image[:, 4].unsqueeze(-1) >= image[:, 4]
         id_mask = image[:, 5].unsqueeze(-1) == image[:, 5]
         mask = torch.logical_and(iou_mask, conf_mask)
         mask = torch.logical_and(mask, id_mask)
         mask = torch.any(mask, 1)
-        return image
-
-    def bbox_iou(bbox1, bbox2):
-        x1, y1, w1, h1 = bbox1[:, 0], bbox1[:, 1], bbox1[:, 2], bbox1[:, 3]
-        x2, y2, w2, h2 = bbox2[:, 0], bbox2[:, 1], bbox2[:, 2], bbox2[:, 3]
-
-        area1 = (w1 + 1) * (h1 + 1)
-        area2 = (w2 + 1) * (h2 + 1)
-        inter_w = torch.clamp(((w1 + w2) / 2) - torch.abs(x1 - x2), min=0)
-        inter_h = torch.clamp(((h1 + h2) / 2) - torch.abs(y1 - y2), min=0)
-        inter_area = (inter_w + 1) * (inter_h + 1)
-        union_area = area1 + area2 - inter_area
-        iou = inter_area / union_area
-
-        return iou
+        return image[mask, :]
 
     scales = list(scales)
 
