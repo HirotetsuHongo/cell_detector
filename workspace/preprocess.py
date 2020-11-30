@@ -7,14 +7,16 @@ import torch
 def load_image(path, height, width, cuda):
     image = cv2.imread(path, -1)
     image = image.astype(np.float)
-    image = np.resize(image, (height, width))
+    image = cv2.resize(image, (height, width))
+    if image.ndim == 3:
+        image = image.transpose((2, 1, 0))
     image = torch.from_numpy(image)
     if cuda:
         image = image.cuda()
 
-    if len(image.size()) == 2:
+    if image.ndim == 2:
         image = image.unsqueeze(0)
-    elif len(image.size()) != 3:
+    elif image.ndim != 3:
         raise Exception("Unexpected image size")
 
     return image
