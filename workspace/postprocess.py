@@ -14,7 +14,9 @@ def calculate_loss(prediction, target, iou):
     num_prediction = prediction.shape[0]
     num_target = target.shape[0]
 
-    mask = bbox_iou(prediction.unsqueeze(-2), target) >= iou
+    iou_mask = bbox_iou(prediction.unsqueeze(1), target) >= iou
+    class_mask = prediction[:, 4].unsqueeze(1) == target[:, 4]
+    mask = torch.logical_and(iou_mask, class_mask)
 
     prediction = prediction.repeat(num_target, 1)
     prediction = prediction.reshape(num_target, num_prediction, -1)
@@ -25,21 +27,12 @@ def calculate_loss(prediction, target, iou):
     target = target.reshape(num_prediction, num_target, -1)
     target = target[mask]
 
-    # xy loss
-    loss = F.mse_loss(prediction[..., 0], target[..., 0], reduction='sum')
-    loss += F.mse_loss(prediction[..., 1], target[..., 1], reduction='sum')
-
-    # wh loss
-    prediction[..., 2:4] = torch.sqrt(prediction[..., 2:4])
-    target[..., 2:4] = torch.sqrt(target[..., 2:4])
-    loss += F.mse_loss(prediction[..., 2], target[..., 2], reduction='sum')
-    loss += F.mse_loss(prediction[..., 3], target[..., 3], reduction='sum')
-
-    # objectness loss
+    # xywh loss
+    loss = F.mse_loss(prediction[:, 0:4], target[:, 0:4], reduction='sum')
 
     # class loss
 
-    return loss
+    return loss, prediction, target
 
 
 def convert_scales(scales, anchorss, input_height, input_width, cuda):
@@ -82,12 +75,12 @@ def bbox_iou(bboxes1, bboxes2):
     w2, h2 = bboxes2[..., 2], bboxes2[..., 3]
 
     xmin1 = x1 - w1 * 0.5
-    ymin1 = y1 - w1 * 0.5
     xmax1 = x1 + w1 * 0.5
+    ymin1 = y1 - w1 * 0.5
     ymax1 = y1 + w1 * 0.5
     xmin2 = x2 - w2 * 0.5
-    ymin2 = y2 - w2 * 0.5
     xmax2 = x2 + w2 * 0.5
+    ymin2 = y2 - w2 * 0.5
     ymax2 = y2 + w2 * 0.5
 
     xmini = torch.maximum(xmin1, xmin2)
@@ -103,6 +96,9 @@ def bbox_iou(bboxes1, bboxes2):
     areai = wi * hi
     areau = area1 + area2 - areai
     iou = areai / areau
+    print("area1: {}".format(area1))
+    print("area2: {}".format(area2))
+    print("areai: {}".format(areai))
 
     return iou
 
@@ -152,13 +148,7 @@ def convert_scale(scale, anchors, input_height, input_width, cuda):
     anchors = anchors.repeat(width * height, 1)
     scale[:, :, 2:4] *= anchors
 
-    # normalize w and h
-    scale[:, :, 2] *= stride_x
-    scale[:, :, 3] *= stride_y
-
-    # sigmoid an bojectness and class scores
+    # sigmoid an objectness and class scores
     scale[:, :, 4:] = torch.sigmoid(scale[:, :, 4:])
-
-    # select a maximum class
 
     return scale
