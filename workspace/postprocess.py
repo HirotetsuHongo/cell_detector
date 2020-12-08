@@ -15,13 +15,13 @@ def calculate_loss(prediction, target, iou, cuda):
     lambda_coord = 5.0
     lambda_noobj = 0.5
 
-    # input info
+    # initial info
     num_prediction = prediction.shape[0]
     num_target = target.shape[0]
-    num_classes = prediction.shape[1] - 5
+    num_classes = prediction.shape[1] - 6
 
     # adjust prediction
-    prediction = torch.cat((prediction[:, :4], prediction[:, 5:]), 1)
+    prediction = torch.cat((prediction[..., :4], prediction[..., 5:]), 1)
 
     # adjust target
     target_confs = torch.zeros(num_target, num_classes)
@@ -32,56 +32,34 @@ def calculate_loss(prediction, target, iou, cuda):
         target_confs[class_mask, c] += 1
     target = torch.cat((target, target_confs), 1)
 
-    return prediction, target
+    # IoU mask
+    mask = bbox_iou(prediction.unsqueeze(1), target) >= iou
 
+    # prediction
+    pred = prediction.unsqueeze(1)
+    pred = pred.repeat(1, num_target, 1)
+    pred_obj = pred[mask]
 
-def calc_loss(prediction, target, iou, cuda):
-    num_prediction = prediction.shape[0]
-    num_target = target.shape[0]
-    num_classes = prediction.shape[1] - 6
-    lambda_coord = 5.0
-    lambda_noobj = 0.5
+    # target
+    tgt = target.unsqueeze(0)
+    tgt = tgt.repeat(num_prediction, 1, 1)
+    tgt_obj = tgt[mask]
 
-    mask_obj = bbox_iou(prediction.unsqueeze(1), target) >= iou
-    mask_noobj = torch.logical_not(mask_obj)
-
-    num_prediction_noobj = torch.all(mask_noobj, dim=1)
-    num_prediction_noobj = torch.non_zero(num_prediction_noobj)
-    num_target_noobj = torch.all(mask_noobj, dim=0)
-    num_target_noobj = torch.non_zero(num_target_noobj)
-
-    prediction = prediction.repeat(num_target, 1)
-    prediction = prediction.reshape(num_target, num_prediction, -1)
-    prediction = prediction.transpose(0, 1)
-    prediction_obj = prediction[mask_obj]
-
-    target_class_confidencies = torch.zeros(num_target, num_classes)
-    if cuda:
-        target_class_confidencies = target_class_confidencies.cuda()
-    for i in range(num_classes):
-        class_mask = target[:, 4] == i
-        target_class_confidencies[class_mask, i] += 1
-    target = torch.cat((target, target_class_confidencies), dim=1)
-    target = target.repeat(num_prediction, 1)
-    target = target.reshape(num_prediction, num_target, -1)
-    target_obj = target[mask_obj]
-
-    loss_xy = lambda_coord * F.mse_loss(prediction_obj[:, 0:2],
-                                        target_obj[:, 0:2],
-                                        reduction='sum')
-    loss_wh = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 2:4]),
-                                        torch.sqrt(target_obj[:, 2:4]),
-                                        reduction='sum')
-    loss_obj = F.mse_loss(prediction_obj[:, 5],
-                          target_obj[:, 4],
-                          reduction='sum')
-    loss_noobj = lambda_noobj * num_classes * num_classes * 0.25 \
-        ((num_prediction - num_prediction_noobj) +
-         (num_target - num_target_noobj))
-    loss_class = F.mse_loss(prediction_obj[:, 6:],
-                            target_obj[:, 5:],
-                            reduction='sum')
-
+    # loss
+    loss_xy = lambda_coord * F.mse_loss(pred_obj[:, 0:2],
+                                        tgt_obj[:, 0:2],
+                                        reduction='mean')
+    loss_wh = lambda_coord * F.mse_loss(torch.sqrt(pred_obj[:, 2:4]),
+                                        torch.sqrt(tgt_obj[:, 2:4]),
+                                        reduction='mean')
+    loss_obj = F.mse_loss(pred_obj[:, 4],
+                          tgt_obj[:, 4],
+                          reduction='mean')
+    loss_noobj = lambda_noobj * num_classes * num_classes * 0.25 * \
+        (num_prediction - pred_obj.shape[0] + num_target - tgt_obj.shape[0])
+    loss_class = F.mse_loss(pred_obj[:, 5:],
+                            tgt_obj[:, 5:],
+                            reduction='mean')
     loss = loss_xy + loss_wh + loss_obj + loss_noobj + loss_class
 
     return loss
@@ -116,7 +94,6 @@ def suppress_prediction(prediction, objectness, iou):
     mask = torch.logical_and(mask, id_mask)
     mask = torch.any(mask, -2)
     prediction = prediction[mask]
-    prediction = torch.cat((prediction[..., :4], prediction[..., 5:]), 1)
 
     return prediction
 
@@ -127,14 +104,14 @@ def bbox_iou(bboxes1, bboxes2):
     x2, y2 = bboxes2[..., 0], bboxes2[..., 1]
     w2, h2 = bboxes2[..., 2], bboxes2[..., 3]
 
-    xmin1 = x1 - w1 * 0.5
-    xmax1 = x1 + w1 * 0.5
-    ymin1 = y1 - w1 * 0.5
-    ymax1 = y1 + w1 * 0.5
-    xmin2 = x2 - w2 * 0.5
-    xmax2 = x2 + w2 * 0.5
-    ymin2 = y2 - w2 * 0.5
-    ymax2 = y2 + w2 * 0.5
+    xmin1 = x1 - (w1 * 0.5)
+    xmax1 = x1 + (w1 * 0.5)
+    ymin1 = y1 - (h1 * 0.5)
+    ymax1 = y1 + (h1 * 0.5)
+    xmin2 = x2 - (w2 * 0.5)
+    xmax2 = x2 + (w2 * 0.5)
+    ymin2 = y2 - (h2 * 0.5)
+    ymax2 = y2 + (h2 * 0.5)
 
     xmini = torch.maximum(xmin1, xmin2)
     ymini = torch.maximum(ymin1, ymin2)
