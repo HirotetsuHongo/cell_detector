@@ -10,7 +10,7 @@ def load_image(path, height, width, cuda):
     image = cv2.resize(image, (height, width))
     if image.ndim == 3:
         image = image.transpose((2, 1, 0))
-    image = torch.from_numpy(image)
+    image = torch.from_numpy(image.astype(np.float32))
     if cuda:
         image = image.cuda()
 
@@ -32,11 +32,10 @@ def load_bbox(path, height, width, cuda):
                               y * height,
                               w * width,
                               h * height,
-                              1,
                               cid]])
             bboxes.append(bbox)
     bboxes = np.concatenate(bboxes, axis=0)
-    bboxes = torch.from_numpy(bboxes)
+    bboxes = torch.from_numpy(bboxes.astype(np.float32))
     if cuda:
         bboxes = bboxes.cuda()
 

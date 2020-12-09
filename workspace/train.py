@@ -29,32 +29,31 @@ initial_weight_path = cfg.config['path']['initial_weight']
 
 
 # Dataset
-def load_images(image_dir, data_dir, cuda):
+def load_image_paths(image_dir, data_dir):
     image_files = os.listdir(image_dir)
     data_files = os.listdir(data_dir)
-    data_file_names = [os.path.splitext(data_file) for data_file in data_files]
+    data_file_names = [os.path.splitext(data_file)[0]
+                       for data_file in data_files]
 
     images = [os.path.join(image_dir, image_file)
               for image_file in image_files
-              if os.path.splitext(image_file) in data_file_names]
-    images = [pre.load_image(image_path, height, width, cuda).unsqueeze(0)
-              for image_path in images]
-    images = torch.cat(images, 0)
+              if os.path.splitext(image_file)[0] in data_file_names]
+    images = sorted(images)
 
     return images
 
 
-def load_bboxes(data_dir, cuda):
+def load_bbox_paths(data_dir):
     bboxes = os.listdir(data_dir)
-    bboxes = [data_dir + data_file for data_file in bboxes]
-    bboxes = [pre.load_bbox(path, height, width, cuda) for path in bboxes]
+    bboxes = [os.path.join(data_dir, data_file) for data_file in bboxes]
+    bboxes = sorted(bboxes)
 
     return bboxes
 
 
 # Train
 def train_batch(net, optimizer, images, targets):
-    assert images.shape[0] == len(targets)
+    assert images.shape[0] == targets.shape[0]
     batch_size = images.shape[0]
     optimizer.zero_grad()
     predictions = net(images)
@@ -74,35 +73,15 @@ def train_batch(net, optimizer, images, targets):
     return loss
 
 
-def test_batch(net, images, targets):
-    assert images.shape[0] == len(targets)
-    batch_size = images.shape[0]
-    predictions = net(images)
-    predictions = post.postprocess(predictions,
-                                   anchors,
-                                   height,
-                                   width,
-                                   objectness,
-                                   nms_iou,
-                                   cuda)
-    loss = 0
-    for i in range(batch_size):
-        loss += post.calculate_loss(predictions[i], targets[i], tp_iou, cuda)
-    loss /= batch_size
-    return loss
-
-
 def train(image_dir, train_dir, test_dir, weight_dir,
-          num_channels, num_classes, num_epochs,
+          num_channels, num_classes, num_epochs, height, width,
           initial_weight_path, cuda):
     # load images and bboxes
-    train_images = load_images(image_dir, train_dir, cuda)
-    train_bboxes = load_bboxes(train_dir, cuda)
-    test_images = load_images(image_dir, test_dir, cuda)
-    test_bboxes = load_bboxes(test_dir, cuda)
+    train_image_paths = load_image_paths(image_dir, train_dir)
+    train_bbox_paths = load_bbox_paths(train_dir)
 
     # constants
-    num_train_images = train_images.shape[0]
+    num_train_images = len(train_image_paths)
 
     # net
     net = model.YOLOv3(num_channels, num_classes)
@@ -115,27 +94,43 @@ def train(image_dir, train_dir, test_dir, weight_dir,
     # optimizer
     optimizer = optim.Adam(net.parameters())
 
-    # training
-    dt_now = datetime.date.today()
-    for epoch in num_epochs:
+    # train
+    dt_now = datetime.datetime.now()
+    for epoch in range(num_epochs):
         for i in range(num_train_images // batch_size + 1):
             start = batch_size * i
-            end = min(start + 6, train_images.shape[0])
-            train_batch(net,
-                        optimizer,
-                        train_images[start:end],
-                        train_bboxes[start:end])
+            end = min(start + 6, num_train_images)
+            if start >= end:
+                break
 
-        loss = test_batch(net, test_images, test_bboxes)
-        text = "{}_{}_{:.4g}.pt".format(dt_now, epoch, loss)
+            train_images = [pre.load_image(image_path, height, width, cuda)
+                            .unsqueeze(0)
+                            for image_path in train_image_paths[start:end]]
+            train_images = torch.cat(train_images, 0)
+            train_bboxes = [pre.load_bbox(bbox_path, height, width, cuda)
+                            .unsqueeze(0)
+                            for bbox_path in train_bbox_paths[start:end]]
+            train_bboxes = torch.cat(train_bboxes, 0)
+
+            loss = train_batch(net,
+                               optimizer,
+                               train_images,
+                               train_bboxes)
+
+            print("Epoch: {}, Batch {}, Loss: {}".format(epoch, i, loss))
+
+        # save parameters
+        text = "{}_{}.pt".format(dt_now, epoch)
         torch.save(net.state_dict(),
                    os.path.join(weight_dir, text))
+
+        # print information
         print("Saved {}.".format(text))
 
 
 def main():
     train(image_dir, train_dir, test_dir, weight_dir,
-          num_channels, num_classes, num_epochs,
+          num_channels, num_classes, num_epochs, height, width,
           initial_weight_path, cuda)
 
 
