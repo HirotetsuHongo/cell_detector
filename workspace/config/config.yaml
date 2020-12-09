@@ -4,6 +4,7 @@ classes:
     - A
     - B
     - C
+    - D
 height: 416
 width: 416
 anchors:
@@ -16,8 +17,8 @@ NMS_IoU: 0.4
 objectness: 0.8
 CUDA: True
 path:
-  train: /workspace/dataset/train/
-  test: /workspace/dataset/test/
-  image: /workspace/dataset/image/
-  weight: /workspace/dataset/weight/
+  train: ./dataset/train
+  test: ./dataset/test
+  image: ./dataset/image
+  weight: ./dataset/weight
   initial_weight: False
