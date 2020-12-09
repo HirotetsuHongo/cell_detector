@@ -74,12 +74,32 @@ def train_batch(net, optimizer, images, targets):
     return loss
 
 
-def train(image_dir, train_dir, weight_dir,
+def test_batch(net, images, targets):
+    assert images.shape[0] == len(targets)
+    batch_size = images.shape[0]
+    predictions = net(images)
+    predictions = post.postprocess(predictions,
+                                   anchors,
+                                   height,
+                                   width,
+                                   objectness,
+                                   nms_iou,
+                                   cuda)
+    loss = 0
+    for i in range(batch_size):
+        loss += post.calculate_loss(predictions[i], targets[i], tp_iou, cuda)
+    loss /= batch_size
+    return loss
+
+
+def train(image_dir, train_dir, test_dir, weight_dir,
           num_channels, num_classes, num_epochs,
           initial_weight_path, cuda):
     # load images and bboxes
     train_images = load_images(image_dir, train_dir, cuda)
     train_bboxes = load_bboxes(train_dir, cuda)
+    test_images = load_images(image_dir, test_dir, cuda)
+    test_bboxes = load_bboxes(test_dir, cuda)
 
     # constants
     num_train_images = train_images.shape[0]
@@ -101,11 +121,12 @@ def train(image_dir, train_dir, weight_dir,
         for i in range(num_train_images // batch_size + 1):
             start = batch_size * i
             end = min(start + 6, train_images.shape[0])
-            loss = train_batch(net,
-                               optimizer,
-                               train_images[start:end],
-                               train_bboxes[start:end])
+            train_batch(net,
+                        optimizer,
+                        train_images[start:end],
+                        train_bboxes[start:end])
 
+        loss = test_batch(net, test_images, test_bboxes)
         text = "{}_{}_{:.4g}.pt".format(dt_now, epoch, loss)
         torch.save(net.state_dict(),
                    os.path.join(weight_dir, text))
@@ -113,7 +134,7 @@ def train(image_dir, train_dir, weight_dir,
 
 
 def main():
-    train(image_dir, train_dir, weight_dir,
+    train(image_dir, train_dir, test_dir, weight_dir,
           num_channels, num_classes, num_epochs,
           initial_weight_path, cuda)
 
