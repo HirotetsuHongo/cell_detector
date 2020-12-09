@@ -16,8 +16,8 @@ NMS_IoU: 0.4
 objectness: 0.8
 CUDA: True
 path:
-  train: /workspace/data/dataset/train/
-  test: /workspace/data/dataset/test/
-  image: /workspace/data/dataset/image/
-  weight: /workspace/weight/
+  train: /workspace/dataset/train/
+  test: /workspace/dataset/test/
+  image: /workspace/dataset/image/
+  weight: /workspace/dataset/weight/
   initial_weight: False
