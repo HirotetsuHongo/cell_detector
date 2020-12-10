@@ -22,7 +22,7 @@ def load_image(path, height, width, cuda):
     return image
 
 
-def load_bbox(path, height, width, cuda):
+def load_bbox(path, num_classes, height, width, cuda):
     bboxes = []
     with open(path, 'r') as f:
         rows = csv.reader(f, delimiter=' ')
@@ -32,7 +32,10 @@ def load_bbox(path, height, width, cuda):
                               y * height,
                               w * width,
                               h * height,
-                              cid]])
+                              1.0]])
+            classes = np.zeros((1, num_classes))
+            classes[:, int(cid)] += 1.0
+            bbox = np.concatenate((bbox, classes), axis=1)
             bboxes.append(bbox)
     bboxes = np.concatenate(bboxes, axis=0)
     bboxes = torch.from_numpy(bboxes.astype(np.float32))
