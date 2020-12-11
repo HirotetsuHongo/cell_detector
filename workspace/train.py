@@ -1,89 +1,36 @@
-import os
-import datetime
-import torch
-import torch.optim as optim
 import model
 import config as cfg
 import preprocess as pre
 import postprocess as post
 
-
-# Config
-batch_size = cfg.config['batch_size']
-num_channels = cfg.config['num_channels']
-classes = cfg.config['classes']
-num_classes = len(classes)
-height = cfg.config['height']
-width = cfg.config['width']
-anchors = cfg.config['anchors']
-num_epochs = cfg.config['num_epochs']
-tp_iou = cfg.config['TP_IoU']
-nms_iou = cfg.config['NMS_IoU']
-objectness = cfg.config['objectness']
-cuda = cfg.config['CUDA']
-train_dir = cfg.config['path']['train']
-test_dir = cfg.config['path']['test']
-image_dir = cfg.config['path']['image']
-weight_dir = cfg.config['path']['weight']
-initial_weight_path = cfg.config['path']['initial_weight']
+import os
+import datetime
+import torch
+import torch.optim as optim
 
 
-# Dataset
-def load_image_paths(image_dir, data_dir):
-    image_files = os.listdir(image_dir)
-    data_files = os.listdir(data_dir)
-    data_file_names = [os.path.splitext(data_file)[0]
-                       for data_file in data_files]
-
-    images = [os.path.join(image_dir, image_file)
-              for image_file in image_files
-              if os.path.splitext(image_file)[0] in data_file_names]
-    images = sorted(images)
-
-    return images
-
-
-def load_bbox_paths(data_dir):
-    bboxes = os.listdir(data_dir)
-    bboxes = [os.path.join(data_dir, data_file) for data_file in bboxes]
-    bboxes = sorted(bboxes)
-
-    return bboxes
-
-
-# Train
-def train_batch(net, optimizer, images, targets):
-    assert images.shape[0] == targets.shape[0]
-    batch_size = images.shape[0]
-    optimizer.zero_grad()
-    predictions = net(images)
-    predictions = post.postprocess(predictions,
-                                   anchors,
-                                   height,
-                                   width,
-                                   objectness,
-                                   nms_iou,
-                                   cuda)
-    loss = 0
-    for i in range(batch_size):
-        loss += post.calculate_loss(predictions[i], targets[i], tp_iou, cuda)
-    loss /= batch_size
-    loss.backward()
-    optimizer.step()
-    return loss
-
-
-def train(image_dir, train_dir, test_dir, weight_dir,
-          num_channels, num_classes, num_epochs, height, width,
-          initial_weight_path, cuda):
-    # load images and bboxes
-    train_image_paths = load_image_paths(image_dir, train_dir)
-    train_bbox_paths = load_bbox_paths(train_dir)
-
+def main():
     # constants
-    num_train_images = len(train_image_paths)
+    batch_size = cfg.config['batch_size']
+    num_channels = cfg.config['num_channels']
+    classes = cfg.config['classes']
+    num_classes = len(classes)
+    height = cfg.config['height']
+    width = cfg.config['width']
+    anchors = cfg.config['anchors']
+    num_epochs = cfg.config['num_epochs']
+    cuda = cfg.config['CUDA']
+    images_path = cfg.config['path']['image']
+    targets_path = cfg.config['path']['train']
+    weight_path = cfg.config['path']['weight']
+    initial_weight_path = cfg.config['path']['initial_weight']
+    image_paths = load_image_paths(images_path, targets_path)
+    target_paths = load_bbox_paths(targets_path)
+    num_images = len(image_paths)
+    now = datetime.datetime.now()
+    now = now.strftime('%Y-%m-%d_%H:%M:%S')
 
-    # net
+    # network
     net = model.YOLOv3(num_channels, num_classes)
     if cuda:
         net = net.cuda()
@@ -95,43 +42,77 @@ def train(image_dir, train_dir, test_dir, weight_dir,
     optimizer = optim.Adam(net.parameters())
 
     # train
-    dt_now = datetime.datetime.now()
     for epoch in range(num_epochs):
-        for i in range(num_train_images // batch_size + 1):
+        losses = []
+
+        for i in range((num_images // batch_size) + 1):
             start = batch_size * i
-            end = min(start + 6, num_train_images)
+            end = min(start + batch_size, num_images)
             if start >= end:
                 break
+            images = load_images(image_paths[start:end], height, width, cuda)
+            targets = load_targets(target_paths[start:end],
+                                   num_classes,
+                                   height,
+                                   width,
+                                   cuda)
+            loss = train(net, optimizer,
+                         images, targets,
+                         anchors, height, width, cuda)
+            print("Epoch: {}, Batch: {}, Loss: {:.3f}".format(epoch, i, loss))
+            losses.append(loss)
 
-            train_images = [pre.load_image(image_path, height, width, cuda)
-                            .unsqueeze(0)
-                            for image_path in train_image_paths[start:end]]
-            train_images = torch.cat(train_images, 0)
-            train_bboxes = [pre.load_bbox(bbox_path, height, width, cuda)
-                            .unsqueeze(0)
-                            for bbox_path in train_bbox_paths[start:end]]
-            train_bboxes = torch.cat(train_bboxes, 0)
-
-            loss = train_batch(net,
-                               optimizer,
-                               train_images,
-                               train_bboxes)
-
-            print("Epoch: {}, Batch {}, Loss: {}".format(epoch, i, loss))
-
-        # save parameters
-        text = "{}_{}.pt".format(dt_now, epoch)
-        torch.save(net.state_dict(),
-                   os.path.join(weight_dir, text))
-
-        # print information
-        print("Saved {}.".format(text))
+        # save weight
+        loss = sum(losses) / len(losses)
+        filename = "{}_{}_{}.pt".format(now, epoch, loss)
+        full_filename = os.path.join(weight_path, filename)
+        torch.save(net.state_dict(), full_filename)
+        print("Saved {}.".format(full_filename))
 
 
-def main():
-    train(image_dir, train_dir, test_dir, weight_dir,
-          num_channels, num_classes, num_epochs, height, width,
-          initial_weight_path, cuda)
+def train(net, optimizer, images, targets, anchors, height, width, cuda):
+    assert len(images) == len(targets)
+    images = [image.unsqueeze(0) for image in images]
+    images = torch.cat(images, 0)
+    predictions = net(images)
+    loss = post.calculate_loss(predictions,
+                               targets,
+                               anchors,
+                               height,
+                               width,
+                               cuda)
+    loss.backward()
+    optimizer.step()
+    return loss
+
+
+def load_image_paths(images_path, bboxes_path):
+    basenames = os.listdir(bboxes_path)
+    basenames = [os.path.splitext(name)[0] for name in basenames]
+    paths = os.listdir(images_path)
+    paths = [path for path in paths if os.path.splitext(path)[0] in basenames]
+    paths = [os.path.join(images_path, path) for path in paths]
+    paths = sorted(paths)
+    return paths
+
+
+def load_bbox_paths(bboxes_path):
+    paths = os.listdir(bboxes_path)
+    paths = [os.path.join(bboxes_path, path) for path in paths]
+    paths = sorted(paths)
+    return paths
+
+
+def load_images(image_paths, height, width, cuda):
+    images = [pre.load_image(path, height, width, cuda)
+              for path in image_paths]
+    return images
+
+
+def load_targets(bbox_paths, num_classes, height, width, cuda):
+    targets = [pre.load_bbox(path, num_classes, height, width, cuda)
+               for path in bbox_paths]
+    return targets
 
 
 if __name__ == '__main__':
