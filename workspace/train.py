@@ -3,10 +3,12 @@ import config as cfg
 import preprocess as pre
 import postprocess as post
 
-import os
-import datetime
 import torch
 import torch.optim as optim
+
+import os
+import datetime
+import time
 
 
 def main():
@@ -19,6 +21,7 @@ def main():
     width = cfg.config['width']
     anchors = cfg.config['anchors']
     num_epochs = cfg.config['num_epochs']
+    learning_rate = cfg.config['learning_rate']
     cuda = cfg.config['CUDA']
     images_path = cfg.config['path']['image']
     targets_path = cfg.config['path']['train']
@@ -28,7 +31,8 @@ def main():
     target_paths = load_bbox_paths(targets_path)
     num_images = len(image_paths)
     now = datetime.datetime.now()
-    now = now.strftime('%Y-%m-%d_%H:%M:%S')
+    now = now.strftime('%Y-%m-%d_%H-%M-%S')
+    weight_file = False
 
     # network
     net = model.YOLOv3(num_channels, num_classes)
@@ -37,43 +41,73 @@ def main():
     net = net.train(True)
     if initial_weight_path:
         net.load_state_dict(torch.load(initial_weight_path))
+        print('Load from {}.'.format(initial_weight_path))
 
     # optimizer
-    optimizer = optim.Adam(net.parameters())
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
 
     # train
     for epoch in range(num_epochs):
         losses = []
+        t0 = time.time()
 
         for i in range((num_images // batch_size) + 1):
+            # get indices
             start = batch_size * i
             end = min(start + batch_size, num_images)
             if start >= end:
                 break
+
+            # load images and targets
             images = load_images(image_paths[start:end], height, width, cuda)
             targets = load_targets(target_paths[start:end],
                                    num_classes,
                                    height,
                                    width,
                                    cuda)
+
+            # train
             loss = train(net, optimizer,
                          images, targets,
                          anchors, height, width, cuda)
-            print("Epoch: {}, Batch: {}, Loss: {:.3f}".format(epoch, i, loss))
+
+            # NaN
+            if torch.isnan(loss):
+                print("NaN is occured.")
+                if weight_file:
+                    net.load_state_dict(torch.load(weight_file))
+                    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+                    print("Reset weight to {}.".format(weight_file))
+                    continue
+                else:
+                    print("Previous weight does not exist.")
+                    break
             losses.append(loss)
 
-        # save weight
+        # NaN
+        if torch.isnan(loss):
+            break
+
+        # calculate average of loss
         loss = sum(losses) / len(losses)
-        filename = "{}_{}_{}.pt".format(now, epoch, loss)
-        full_filename = os.path.join(weight_path, filename)
-        torch.save(net.state_dict(), full_filename)
-        print("Saved {}.".format(full_filename))
+
+        # time elapse
+        elapsed_time = time.time() - t0
+        print("Epoch: {}, Time: {:.3f}s, Loss: {:.3f}"
+              .format(epoch, elapsed_time, loss))
+
+        # save weight
+        text = "{}_{:0>4}_{:.3f}.pt".format(now, epoch, loss)
+        weight_file = os.path.join(weight_path, text)
+        torch.save(net.state_dict(), weight_file)
+        print("Saved {}.".format(weight_file))
 
 
 def train(net, optimizer, images, targets, anchors, height, width, cuda):
     assert len(images) == len(targets)
     images = [image.unsqueeze(0) for image in images]
     images = torch.cat(images, 0)
+    optimizer.zero_grad()
     predictions = net(images)
     loss = post.calculate_loss(predictions,
                                targets,

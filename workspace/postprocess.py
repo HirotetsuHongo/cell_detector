@@ -2,15 +2,21 @@ import torch
 import torch.nn.functional as F
 
 
-def postprocess(predictions, anchors, height, width, cuda):
+def postprocess(predictions, anchors, height, width, objectness, iou, cuda):
     assert len(predictions) == len(anchors)
     predictions = [convert(prediction, ancs, height, width, cuda)
                    for (prediction, ancs) in zip(predictions, anchors)]
-    predictions = [prediction.reshape(-1, 9) for prediction in predictions]
+    predictions = [prediction
+                   .reshape(prediction.shape[0],
+                            prediction.shape[1]
+                            * prediction.shape[2]
+                            * prediction.shape[3],
+                            -1)
+                   for prediction in predictions]
     predictions = concat_scale(predictions)
     predictions = separate_batch(predictions)
-    predictions = [suppress(prediction) for prediction in predictions]
-    predictions = [prediction[:, :5] for prediction in predictions]
+    predictions = [suppress(prediction, objectness, iou)
+                   for prediction in predictions]
 
     return predictions
 
@@ -20,9 +26,7 @@ def calculate_loss(predictions, targets, anchors,
     predictions = [convert(prediction, ancs, height, width, cuda)
                    for (prediction, ancs) in zip(predictions, anchors)]
 
-    loss = torch.tensor(0.0)
-    if cuda:
-        loss = loss.cuda()
+    loss = 0.0
 
     for prediction in predictions:
         assert prediction.shape[0] == len(targets)
@@ -31,13 +35,17 @@ def calculate_loss(predictions, targets, anchors,
         scale_width = prediction.shape[2]
         num_anchors = prediction.shape[3]
         for i in range(batch_size):
-            loss += calc_loss(prediction[i].reshape(-1, 9),
+            loss += calc_loss(prediction[i].reshape(scale_height
+                                                    * scale_width
+                                                    * num_anchors,
+                                                    -1),
                               targets[i],
                               height,
                               width,
                               scale_height,
                               scale_width,
-                              num_anchors) / batch_size
+                              num_anchors)
+        loss /= batch_size
 
     return loss
 
@@ -49,11 +57,11 @@ def convert(prediction, anchors, height, width, cuda):
     stride_x = width / w
     stride_y = height / h
     num_anchors = len(anchors)
-    assert prediction.shape[1] == num_anchors * 9
+    cell_depth = prediction.shape[1] // num_anchors
 
     # reshape
-    prediction = prediction.permute(0, 2, 3, 1)
-    prediction = prediction.reshape(batch_size, h, w, num_anchors, 9)
+    prediction = prediction.reshape(batch_size, num_anchors, cell_depth, h, w)
+    prediction = prediction.permute(0, 1, 3, 4, 2)
 
     # sigmoid x and y
     prediction[:, :, :, :, 0:2] = torch.sigmoid(prediction[:, :, :, :, 0:2])
@@ -64,12 +72,10 @@ def convert(prediction, anchors, height, width, cuda):
     if cuda:
         grid_x = grid_x.cuda()
         grid_y = grid_y.cuda()
-    centroid_x, centroid_y = torch.meshgrid(grid_x, grid_y)
+    centroid_y, centroid_x = torch.meshgrid(grid_y, grid_x)
     centroid_x = centroid_x.unsqueeze(-1)
     centroid_y = centroid_y.unsqueeze(-1)
     centroid = torch.cat((centroid_x, centroid_y), -1)
-    centroid = centroid.repeat(batch_size, num_anchors, 1)
-    centroid = centroid.reshape(batch_size, h, w, num_anchors, 2)
     prediction[:, :, :, :, 0:2] += centroid
 
     # normalize x and y
@@ -80,13 +86,14 @@ def convert(prediction, anchors, height, width, cuda):
     prediction[:, :, :, :, 2] = torch.exp(prediction[:, :, :, :, 2])
     prediction[:, :, :, :, 3] = torch.exp(prediction[:, :, :, :, 3])
 
+    # permute
+    prediction = prediction.permute(0, 2, 3, 1, 4)
+
     # multiply anchors
     anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
     anchors = torch.tensor(anchors)
     if cuda:
         anchors = anchors.cuda()
-    anchors = anchors.repeat(batch_size * w * h, 1)
-    anchors = anchors.reshape(batch_size, w, h, num_anchors, 2)
     prediction[:, :, :, :, 2:4] *= anchors
 
     # sigmoid an objectness and class scores
@@ -132,6 +139,7 @@ def calc_loss(prediction, target, input_height, input_width,
 
     # initial info
     num_prediction = prediction.shape[0]
+    cell_depth = prediction.shape[1]
 
     # get target position in feature map
     stride_x = input_width / scale_width
@@ -152,16 +160,44 @@ def calc_loss(prediction, target, input_height, input_width,
     prediction_noobj = prediction[mask_noobj]
 
     # target repeat number of anchors
-    target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, 9)
+    target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, cell_depth)
 
     # loss
-    loss_xy = lambda_coord * F.mse_loss(prediction_obj[:, 0:2], target[:, 0:2])
-    loss_wh = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 2:4]),
-                                        torch.sqrt(prediction_obj[:, 2:4]))
-    loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4])
+    loss_x = lambda_coord * F.mse_loss(prediction_obj[:, 0] / stride_x,
+                                       target[:, 0] / stride_x,
+                                       reduction='sum')
+    loss_y = lambda_coord * F.mse_loss(prediction_obj[:, 1] / stride_y,
+                                       target[:, 1] / stride_y,
+                                       reduction='sum')
+    loss_w = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 2]
+                                                  / stride_x),
+                                       torch.sqrt(target[:, 2] / stride_x),
+                                       reduction='sum')
+    loss_h = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 3]
+                                                  / stride_y),
+                                       torch.sqrt(target[:, 3] / stride_y),
+                                       reduction='sum')
+    loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4], reduction='sum')
     loss_noobj = lambda_noobj * torch.sum(torch.square(prediction_noobj[:, 4]))
-    loss_cls = F.mse_loss(prediction_obj[:, 5:], target[:, 5:])
-    loss = loss_xy + loss_wh + loss_obj + loss_noobj + loss_cls
+    loss_cls = F.mse_loss(prediction_obj[:, 5:],
+                          target[:, 5:],
+                          reduction='sum')
+    loss = loss_x + loss_y + loss_w + loss_h + loss_obj + loss_noobj + loss_cls
+
+    # print(pos)
+    # print(torch.cat((prediction_obj[:, 0:1], target[:, 0:1]), -1))
+    # print(torch.cat((prediction_obj[:, 1:2], target[:, 1:2]), -1))
+    # print(torch.cat((prediction_obj[:, 2:4], target[:, 2:4]), -1))
+    with open('log_loss.txt', 'a') as f:
+        text = ('{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f}\n'
+                .format(loss_x,
+                        loss_y,
+                        loss_w,
+                        loss_h,
+                        loss_obj,
+                        loss_noobj,
+                        loss_cls))
+        f.write(text)
 
     return loss
 
@@ -197,6 +233,6 @@ def bbox_iou(bboxes1, bboxes2):
     area2 = w2 * h2
     areai = wi * hi
     areau = area1 + area2 - areai
-    iou = areai / areau
+    iou = areai / areau + 0.001
 
     return iou
