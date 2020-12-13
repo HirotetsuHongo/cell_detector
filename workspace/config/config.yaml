@@ -11,10 +11,11 @@ anchors:
   - [[10,13], [16,30], [33,23]]
   - [[30,61], [62,45], [59,119]]
   - [[116,90], [156,198], [373,326]]
-num_epochs: 200
+num_epochs: 1000
 TP_IoU: 0.5
 NMS_IoU: 0.4
 objectness: 0.8
+learning_rate: 0.001
 CUDA: True
 path:
   train: ./dataset/train
