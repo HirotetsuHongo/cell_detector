@@ -120,8 +120,8 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
     return loss
 
 
-def load_image_paths(image_dir, bboxes_path):
-    basenames = os.listdir(bboxes_path)
+def load_image_paths(image_dir, bbox_dir):
+    basenames = os.listdir(bbox_dir)
     basenames = [os.path.splitext(name)[0] for name in basenames]
     paths = os.listdir(image_dir)
     paths = [path for path in paths if os.path.splitext(path)[0] in basenames]
@@ -130,9 +130,9 @@ def load_image_paths(image_dir, bboxes_path):
     return paths
 
 
-def load_bbox_paths(bboxes_path):
-    paths = os.listdir(bboxes_path)
-    paths = [os.path.join(bboxes_path, path) for path in paths]
+def load_bbox_paths(bbox_dir):
+    paths = os.listdir(bbox_dir)
+    paths = [os.path.join(bbox_dir, path) for path in paths]
     paths = sorted(paths)
     return paths
 
