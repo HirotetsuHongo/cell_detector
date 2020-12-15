@@ -1,7 +1,9 @@
+import torch
+
+import os
 import csv
 import numpy as np
 import cv2
-import torch
 
 
 def load_image(path, height, width, cuda):
@@ -43,3 +45,32 @@ def load_bbox(path, num_classes, height, width, cuda):
         bboxes = bboxes.cuda()
 
     return bboxes
+
+
+def load_image_paths(image_dir, bbox_dir):
+    basenames = os.listdir(bbox_dir)
+    basenames = [os.path.splitext(name)[0] for name in basenames]
+    paths = os.listdir(image_dir)
+    paths = [path for path in paths if os.path.splitext(path)[0] in basenames]
+    paths = [os.path.join(image_dir, path) for path in paths]
+    paths = sorted(paths)
+    return paths
+
+
+def load_bbox_paths(bbox_dir):
+    paths = os.listdir(bbox_dir)
+    paths = [os.path.join(bbox_dir, path) for path in paths]
+    paths = sorted(paths)
+    return paths
+
+
+def load_images(image_paths, height, width, cuda):
+    images = [load_image(path, height, width, cuda)
+              for path in image_paths]
+    return images
+
+
+def load_targets(bbox_paths, num_classes, height, width, cuda):
+    targets = [load_bbox(path, num_classes, height, width, cuda)
+               for path in bbox_paths]
+    return targets

@@ -27,8 +27,8 @@ def main():
     target_dir = cfg.config['path']['train']
     weight_path = cfg.config['path']['weight']
     initial_weight_path = cfg.config['path']['initial_weight']
-    image_paths = load_image_paths(image_dir, target_dir)
-    target_paths = load_bbox_paths(target_dir)
+    image_paths = pre.load_image_paths(image_dir, target_dir)
+    target_paths = pre.load_bbox_paths(target_dir)
     num_images = len(image_paths)
     now = datetime.datetime.now()
     now = now.strftime('%Y-%m-%d_%H-%M-%S')
@@ -118,35 +118,6 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
     loss.backward()
     optimizer.step()
     return loss
-
-
-def load_image_paths(image_dir, bbox_dir):
-    basenames = os.listdir(bbox_dir)
-    basenames = [os.path.splitext(name)[0] for name in basenames]
-    paths = os.listdir(image_dir)
-    paths = [path for path in paths if os.path.splitext(path)[0] in basenames]
-    paths = [os.path.join(image_dir, path) for path in paths]
-    paths = sorted(paths)
-    return paths
-
-
-def load_bbox_paths(bbox_dir):
-    paths = os.listdir(bbox_dir)
-    paths = [os.path.join(bbox_dir, path) for path in paths]
-    paths = sorted(paths)
-    return paths
-
-
-def load_images(image_paths, height, width, cuda):
-    images = [pre.load_image(path, height, width, cuda)
-              for path in image_paths]
-    return images
-
-
-def load_targets(bbox_paths, num_classes, height, width, cuda):
-    targets = [pre.load_bbox(path, num_classes, height, width, cuda)
-               for path in bbox_paths]
-    return targets
 
 
 if __name__ == '__main__':
