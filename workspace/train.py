@@ -23,12 +23,12 @@ def main():
     num_epochs = cfg.config['num_epochs']
     learning_rate = cfg.config['learning_rate']
     cuda = cfg.config['CUDA']
-    images_path = cfg.config['path']['image']
-    targets_path = cfg.config['path']['train']
+    image_dir = cfg.config['path']['image']
+    target_dir = cfg.config['path']['train']
     weight_path = cfg.config['path']['weight']
     initial_weight_path = cfg.config['path']['initial_weight']
-    image_paths = load_image_paths(images_path, targets_path)
-    target_paths = load_bbox_paths(targets_path)
+    image_paths = load_image_paths(image_dir, target_dir)
+    target_paths = load_bbox_paths(target_dir)
     num_images = len(image_paths)
     now = datetime.datetime.now()
     now = now.strftime('%Y-%m-%d_%H-%M-%S')
@@ -120,12 +120,12 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
     return loss
 
 
-def load_image_paths(images_path, bboxes_path):
+def load_image_paths(image_dir, bboxes_path):
     basenames = os.listdir(bboxes_path)
     basenames = [os.path.splitext(name)[0] for name in basenames]
-    paths = os.listdir(images_path)
+    paths = os.listdir(image_dir)
     paths = [path for path in paths if os.path.splitext(path)[0] in basenames]
-    paths = [os.path.join(images_path, path) for path in paths]
+    paths = [os.path.join(image_dir, path) for path in paths]
     paths = sorted(paths)
     return paths
 
