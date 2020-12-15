@@ -96,6 +96,10 @@ def convert(prediction, anchors, height, width, cuda):
         anchors = anchors.cuda()
     prediction[:, :, :, :, 2:4] *= anchors
 
+    # normalize w and h
+    prediction[:, :, :, :, 2] *= stride_x
+    prediction[:, :, :, :, 3] *= stride_y
+
     # sigmoid an objectness and class scores
     prediction[:, :, :, :, 4:] = torch.sigmoid(prediction[:, :, :, :, 4:])
 
