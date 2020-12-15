@@ -3,6 +3,8 @@ import config as cfg
 import preprocess as pre
 import postprocess as post
 
+import torch
+
 import time
 
 
@@ -27,10 +29,11 @@ def main():
     net = model.YOLOv3(num_channels, num_classes)
     if cuda:
         net = net.cuda()
-    net = net.train(False)
 
     # calculate loss for each weights
     for weight_path in weight_paths:
+        net.load_state_dict(torch.load(weight_path))
+        net.eval()
         loss = 0.0
         t0 = time.time()
 
@@ -40,30 +43,35 @@ def main():
                                    height,
                                    width,
                                    cuda)
-            image = image.unsqueeze(0)
             target = pre.load_bbox(target_paths[i],
                                    num_classes,
                                    height,
                                    width,
                                    cuda)
 
-            # predictions
-            predictions = net(image)
-
             # calculate loss
-            loss_i = post.calculate_loss(predictions,
-                                         target,
-                                         anchors,
-                                         height,
-                                         width,
-                                         cuda)
-            loss += loss_i
+            loss += test(net, image, target, anchors, height, width, cuda)
 
         loss /= num_images
         elapsed_time = time.time() - t0
 
-        print("Weight: {}, Time: {:.3f}, Loss: {:.3f}"
+        print("Weight: {}, Time: {:.3f}s, Loss: {:.3f}"
               .format(weight_path, elapsed_time, loss))
+
+
+def test(net, image, target, anchors, height, width, cuda):
+    image = image.unsqueeze(0)
+    target = [target]
+    prediction = net(image)
+    loss = post.calculate_loss(prediction,
+                               target,
+                               anchors,
+                               height,
+                               width,
+                               cuda)
+    loss = float(loss)
+
+    return loss
 
 
 if __name__ == '__main__':
