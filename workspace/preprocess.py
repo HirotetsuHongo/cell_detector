@@ -57,9 +57,9 @@ def load_image_paths(image_dir, bbox_dir):
     return paths
 
 
-def load_bbox_paths(bbox_dir):
-    paths = os.listdir(bbox_dir)
-    paths = [os.path.join(bbox_dir, path) for path in paths]
+def load_dir_paths(directory):
+    paths = os.listdir(directory)
+    paths = [os.path.join(directory, path) for path in paths]
     paths = sorted(paths)
     return paths
 

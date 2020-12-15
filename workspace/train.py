@@ -25,10 +25,10 @@ def main():
     cuda = cfg.config['CUDA']
     image_dir = cfg.config['path']['image']
     target_dir = cfg.config['path']['train']
-    weight_path = cfg.config['path']['weight']
-    initial_weight_path = cfg.config['path']['initial_weight']
+    weight_dir = cfg.config['path']['weight']
+    initial_weight_dir = cfg.config['path']['initial_weight']
     image_paths = pre.load_image_paths(image_dir, target_dir)
-    target_paths = pre.load_bbox_paths(target_dir)
+    target_paths = pre.load_dir_paths(target_dir)
     num_images = len(image_paths)
     now = datetime.datetime.now()
     now = now.strftime('%Y-%m-%d_%H-%M-%S')
@@ -39,9 +39,9 @@ def main():
     if cuda:
         net = net.cuda()
     net = net.train(True)
-    if initial_weight_path:
-        net.load_state_dict(torch.load(initial_weight_path))
-        print('Load from {}.'.format(initial_weight_path))
+    if initial_weight_dir:
+        net.load_state_dict(torch.load(initial_weight_dir))
+        print('Load from {}.'.format(initial_weight_dir))
 
     # optimizer
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
@@ -59,12 +59,15 @@ def main():
                 break
 
             # load images and targets
-            images = load_images(image_paths[start:end], height, width, cuda)
-            targets = load_targets(target_paths[start:end],
-                                   num_classes,
-                                   height,
-                                   width,
-                                   cuda)
+            images = pre.load_images(image_paths[start:end],
+                                     height,
+                                     width,
+                                     cuda)
+            targets = pre.load_targets(target_paths[start:end],
+                                       num_classes,
+                                       height,
+                                       width,
+                                       cuda)
 
             # train
             loss = train(net, optimizer,
@@ -98,7 +101,7 @@ def main():
 
         # save weight
         text = "{}_{:0>4}_{:.3f}.pt".format(now, epoch, loss)
-        weight_file = os.path.join(weight_path, text)
+        weight_file = os.path.join(weight_dir, text)
         torch.save(net.state_dict(), weight_file)
         print("Saved {}.".format(weight_file))
 
