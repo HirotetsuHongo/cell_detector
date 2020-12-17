@@ -66,28 +66,28 @@ def convert(prediction, anchors, height, width, cuda):
     # sigmoid x and y
     prediction[:, :, :, :, 0:2] = torch.sigmoid(prediction[:, :, :, :, 0:2])
 
-    # add centroid
+    # add offset
     grid_x = torch.arange(w)
     grid_y = torch.arange(h)
     if cuda:
         grid_x = grid_x.cuda()
         grid_y = grid_y.cuda()
-    centroid_y, centroid_x = torch.meshgrid(grid_y, grid_x)
-    centroid_x = centroid_x.unsqueeze(-1)
-    centroid_y = centroid_y.unsqueeze(-1)
-    centroid = torch.cat((centroid_x, centroid_y), -1)
-    prediction[:, :, :, :, 0:2] += centroid
+    offset_y, offset_x = torch.meshgrid(grid_y, grid_x)
+    offset_x = offset_x.unsqueeze(-1)
+    offset_y = offset_y.unsqueeze(-1)
+    offset = torch.cat((offset_x, offset_y), -1)
+    prediction[:, :, :, :, 0:2] += offset
 
     # normalize x and y
     prediction[:, :, :, :, 0] *= stride_x
     prediction[:, :, :, :, 1] *= stride_y
 
+    # permute
+    prediction = prediction.permute(0, 2, 3, 1, 4)
+
     # log scale transform w and h
     prediction[:, :, :, :, 2] = torch.exp(prediction[:, :, :, :, 2])
     prediction[:, :, :, :, 3] = torch.exp(prediction[:, :, :, :, 3])
-
-    # permute
-    prediction = prediction.permute(0, 2, 3, 1, 4)
 
     # multiply anchors
     anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
@@ -135,6 +135,9 @@ def suppress(prediction, objectness, iou):
     return prediction
 
 
+log_counter = 0
+
+
 def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
@@ -167,41 +170,42 @@ def calc_loss(prediction, target, input_height, input_width,
     target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, cell_depth)
 
     # loss
-    loss_x = lambda_coord * F.mse_loss(prediction_obj[:, 0] / stride_x,
-                                       target[:, 0] / stride_x,
-                                       reduction='sum')
-    loss_y = lambda_coord * F.mse_loss(prediction_obj[:, 1] / stride_y,
-                                       target[:, 1] / stride_y,
-                                       reduction='sum')
-    loss_w = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 2]
-                                                  / stride_x),
-                                       torch.sqrt(target[:, 2] / stride_x),
-                                       reduction='sum')
-    loss_h = lambda_coord * F.mse_loss(torch.sqrt(prediction_obj[:, 3]
-                                                  / stride_y),
-                                       torch.sqrt(target[:, 3] / stride_y),
-                                       reduction='sum')
+    loss_x = F.mse_loss(prediction_obj[:, 0], target[:, 0], reduction='sum')
+    loss_y = F.mse_loss(prediction_obj[:, 1], target[:, 1], reduction='sum')
+    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2]),
+                        torch.sqrt(target[:, 2]),
+                        reduction='sum')
+    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3]),
+                        torch.sqrt(target[:, 3]),
+                        reduction='sum')
     loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4], reduction='sum')
-    loss_noobj = lambda_noobj * torch.sum(torch.square(prediction_noobj[:, 4]))
+    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4]))
     loss_cls = F.mse_loss(prediction_obj[:, 5:],
                           target[:, 5:],
                           reduction='sum')
-    loss = loss_x + loss_y + loss_w + loss_h + loss_obj + loss_noobj + loss_cls
+    loss = \
+        lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
+        loss_obj + lambda_noobj * loss_noobj + loss_cls
 
-    # print(pos)
-    # print(torch.cat((prediction_obj[:, 0:1], target[:, 0:1]), -1))
-    # print(torch.cat((prediction_obj[:, 1:2], target[:, 1:2]), -1))
-    # print(torch.cat((prediction_obj[:, 2:4], target[:, 2:4]), -1))
-    with open('log_loss.txt', 'a') as f:
-        text = ('{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f}\n'
-                .format(loss_x,
-                        loss_y,
-                        loss_w,
-                        loss_h,
-                        loss_obj,
-                        loss_noobj,
-                        loss_cls))
-        f.write(text)
+    # logging
+    global log_counter
+    if log_counter % 100 == 0:
+        with open('log_pred.txt', 'a') as f:
+            f.write('{}\n'.format(prediction[:10]))
+        with open('log_compare.txt', 'a') as f:
+            f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-2),
+                                             target.unsqueeze(-2)), -2)))
+        with open('log_loss.txt', 'a') as f:
+            text = ('{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f}\n'
+                    .format(loss_x,
+                            loss_y,
+                            loss_w,
+                            loss_h,
+                            loss_obj,
+                            loss_noobj,
+                            loss_cls))
+            f.write(text)
+    log_counter += 1
 
     return loss
 
