@@ -96,11 +96,11 @@ def main():
 
         # time elapse
         elapsed_time = time.time() - t0
-        print("Epoch: {}, Time: {:.3f}s, Loss: {:.3f}"
+        print("Epoch: {}, Time: {:.2f}s, Loss: {:.2f}"
               .format(epoch, elapsed_time, loss))
 
         # save weight
-        text = "{}_{:0>4}_{:.3f}.pt".format(now, epoch, loss)
+        text = "{}_{:0>4}_{:.2f}.pt".format(now, epoch, loss)
         weight_file = os.path.join(weight_dir, text)
         torch.save(net.state_dict(), weight_file)
         print("Saved {}.".format(weight_file))
