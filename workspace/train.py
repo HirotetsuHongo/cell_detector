@@ -44,7 +44,7 @@ def main():
         print('Load from {}.'.format(initial_weight_dir))
 
     # optimizer
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
 
     # train
     for epoch in range(num_epochs):
