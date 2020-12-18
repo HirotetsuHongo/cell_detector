@@ -189,7 +189,7 @@ def calc_loss(prediction, target, input_height, input_width,
 
     # logging
     global log_counter
-    if log_counter % 100 == 0:
+    if log_counter % 1000 == 0:
         with open('log_pred.txt', 'a') as f:
             f.write('{}\n'.format(prediction[:10]))
         with open('log_compare.txt', 'a') as f:
