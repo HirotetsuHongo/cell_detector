@@ -40,7 +40,7 @@ def main():
 
         command = command.split(' ')
 
-        # execute command
+        # detect
         if command[0] == 'detect':
             if len(command) != 3:
                 print('usage: detect image_path output_path')
@@ -65,16 +65,19 @@ def main():
                                            cuda)
                 detect.write_prediction(prediction, output_path)
 
+        # train
         elif command[0] == 'train':
             if len(command) != 1:
                 print('usage: train')
             train.main()
 
+        # test
         elif command[0] == 'test':
             if len(command) != 1:
                 print('usage: test')
             test.main()
 
+        # show usage
         else:
             print('Unknown command.')
             print('Available commands:')
