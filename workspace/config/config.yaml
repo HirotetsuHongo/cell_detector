@@ -8,9 +8,9 @@ classes:
 height: 416
 width: 416
 anchors:
-  - [[10,13], [16,30], [33,23]]
-  - [[30,61], [62,45], [59,119]]
-  - [[116,90], [156,198], [373,326]]
+    - [[4, 10], [10, 4], [7, 7]]
+    - [[8, 20], [20, 8], [14, 14]]
+    - [[12, 30], [30, 12], [21, 21]]
 num_epochs: 1000
 TP_IoU: 0.5
 NMS_IoU: 0.4
@@ -18,8 +18,9 @@ objectness: 0.8
 learning_rate: 0.001
 CUDA: True
 path:
-  train: ./dataset/train
-  test: ./dataset/test
-  image: ./dataset/image
-  weight: ./dataset/weight
-  initial_weight: False
+    train: ./dataset/train
+    test: ./dataset/test
+    image: ./dataset/image
+    weight: ./dataset/weight
+    weight_test: ./dataset/weight
+    initial_weight: False
