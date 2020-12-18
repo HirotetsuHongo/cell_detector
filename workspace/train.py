@@ -41,10 +41,12 @@ def main():
     net = net.train(True)
     if initial_weight_dir:
         net.load_state_dict(torch.load(initial_weight_dir))
-        print('Load from {}.'.format(initial_weight_dir))
+        print('Load initial weight from {}.'.format(initial_weight_dir))
 
     # optimizer
-    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(net.parameters(),
+                            lr=learning_rate,
+                            weight_decay=0.1)
 
     # train
     for epoch in range(num_epochs):
@@ -81,15 +83,16 @@ def main():
                     net.load_state_dict(torch.load(weight_file))
                     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
                     print("Reset weight to {}.".format(weight_file))
-                    continue
+                    break
                 else:
                     print("Previous weight does not exist.")
                     break
+
             losses.append(loss)
 
         # NaN
         if torch.isnan(loss):
-            break
+            continue
 
         # calculate average of loss
         loss = sum(losses) / len(losses)
