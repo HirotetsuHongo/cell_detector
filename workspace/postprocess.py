@@ -144,6 +144,7 @@ def calc_loss(prediction, target, input_height, input_width,
     # constants
     lambda_coord = 5.0
     lambda_noobj = 0.5
+    eps = 0.001
 
     # initial info
     num_prediction = prediction.shape[0]
@@ -173,11 +174,11 @@ def calc_loss(prediction, target, input_height, input_width,
     # loss
     loss_x = F.mse_loss(prediction_obj[:, 0], target[:, 0], reduction='sum')
     loss_y = F.mse_loss(prediction_obj[:, 1], target[:, 1], reduction='sum')
-    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] + 0.001),
-                        torch.sqrt(target[:, 2] + 0.001),
+    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] + eps),
+                        torch.sqrt(target[:, 2] + eps),
                         reduction='sum')
-    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] + 0.001),
-                        torch.sqrt(target[:, 3] + 0.001),
+    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] + eps),
+                        torch.sqrt(target[:, 3] + eps),
                         reduction='sum')
     loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4], reduction='sum')
     loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4]))
@@ -216,6 +217,8 @@ def select_classes(prediction):
 
 
 def bbox_iou(bboxes1, bboxes2):
+    eps = 0.001
+
     x1, y1 = bboxes1[..., 0], bboxes1[..., 1]
     w1, h1 = bboxes1[..., 2], bboxes1[..., 3]
     x2, y2 = bboxes2[..., 0], bboxes2[..., 1]
@@ -242,6 +245,6 @@ def bbox_iou(bboxes1, bboxes2):
     area2 = w2 * h2
     areai = wi * hi
     areau = area1 + area2 - areai
-    iou = areai / areau + 0.001
+    iou = areai / areau + eps
 
     return iou
