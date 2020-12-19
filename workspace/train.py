@@ -5,6 +5,7 @@ import postprocess as post
 
 import torch
 import torch.optim as optim
+import numpy as np
 
 import os
 import datetime
@@ -81,7 +82,9 @@ def main():
                 print("NaN is occured.")
                 if weight_file:
                     net.load_state_dict(torch.load(weight_file))
-                    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+                    optimizer = optim.AdamW(net.parameters(),
+                                            lr=learning_rate,
+                                            weight_decay=0.1)
                     print("Reset weight to {}.".format(weight_file))
                     break
                 else:
@@ -99,7 +102,7 @@ def main():
 
         # time elapse
         elapsed_time = time.time() - t0
-        print("Epoch: {}, Time: {:.2f}s, Loss: {:.2f}"
+        print("Epoch: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}"
               .format(epoch, elapsed_time, loss))
 
         # save weight
@@ -121,8 +124,14 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
                                height,
                                width,
                                cuda)
-    loss.backward()
-    optimizer.step()
+    if torch.isnan(loss):
+        loss = torch.tensor(np.nan)
+        if cuda:
+            loss = loss.cuda()
+    else:
+        loss.backward()
+        optimizer.step()
+
     return loss
 
 

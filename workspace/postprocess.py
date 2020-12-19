@@ -88,6 +88,7 @@ def convert(prediction, anchors, height, width, cuda):
     # log scale transform w and h
     prediction[:, :, :, :, 2] = torch.exp(prediction[:, :, :, :, 2])
     prediction[:, :, :, :, 3] = torch.exp(prediction[:, :, :, :, 3])
+    assert torch.any(~torch.isinf(prediction[:, :, :, :, 2:4]))
 
     # multiply anchors
     anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
@@ -172,11 +173,11 @@ def calc_loss(prediction, target, input_height, input_width,
     # loss
     loss_x = F.mse_loss(prediction_obj[:, 0], target[:, 0], reduction='sum')
     loss_y = F.mse_loss(prediction_obj[:, 1], target[:, 1], reduction='sum')
-    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2]),
-                        torch.sqrt(target[:, 2]),
+    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] + 0.001),
+                        torch.sqrt(target[:, 2] + 0.001),
                         reduction='sum')
-    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3]),
-                        torch.sqrt(target[:, 3]),
+    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] + 0.001),
+                        torch.sqrt(target[:, 3] + 0.001),
                         reduction='sum')
     loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4], reduction='sum')
     loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4]))
@@ -189,7 +190,7 @@ def calc_loss(prediction, target, input_height, input_width,
 
     # logging
     global log_counter
-    if log_counter % 1000 == 0:
+    if log_counter % 5000 == 0:
         with open('log_pred.txt', 'a') as f:
             f.write('{}\n'.format(prediction[:10]))
         with open('log_compare.txt', 'a') as f:
