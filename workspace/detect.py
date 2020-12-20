@@ -42,14 +42,14 @@ def main():
                         cuda)
 
     # write prediction into output
-    write_prediction(prediction, output_path)
+    write_prediction(prediction, output_path, height, width)
 
     return
 
 
 def detect(net, image, anchors, objectness, nms_iou, cuda):
-    height = image.shape[0]
-    width = image.shape[1]
+    height = image.shape[1]
+    width = image.shape[2]
     images = image.unsqueeze(0)
     predictions = net(images)
     predictions = post.postprocess(predictions,
@@ -61,17 +61,38 @@ def detect(net, image, anchors, objectness, nms_iou, cuda):
     return prediction
 
 
-def write_prediction(prediction, output_path):
-    prediction_size = prediction.shape[0]
-    bbox_size = prediction.shape[1]
-    with open(output_path, 'a') as f:
-        for i in range(prediction_size):
+def write_prediction(prediction, output_path, height, width):
+    # create bboxes
+    classes = post.select_classes(prediction)[1]
+    xs = prediction[:, 0] / width
+    ys = prediction[:, 1] / height
+    ws = prediction[:, 2] / width
+    hs = prediction[:, 3] / height
+    objs = prediction[:, 4]
+    bboxes = torch.cat((classes.unsqueeze(-1),
+                        xs.unsqueeze(-1),
+                        ys.unsqueeze(-1),
+                        ws.unsqueeze(-1),
+                        hs.unsqueeze(-1),
+                        objs.unsqueeze(-1)),
+                       -1)
+
+    # constants
+    num_bboxes = bboxes.shape[0]
+    bbox_size = bboxes.shape[1]
+
+    with open(output_path, 'w') as f:
+        for i in range(num_bboxes):
             for j in range(bbox_size):
-                f.write('{:.3f}'.format(prediction[i, j]))
+                if j == 0:
+                    f.write('{:d}'.format(bboxes[i, j].int()))
+                else:
+                    f.write('{:.6f}'.format(bboxes[i, j]))
                 if j != bbox_size - 1:
                     f.write(' ')
-            if i != prediction_size - 1:
+            if i != num_bboxes - 1:
                 f.write('\n')
+
     return
 
 
