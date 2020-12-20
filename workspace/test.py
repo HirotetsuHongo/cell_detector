@@ -55,7 +55,7 @@ def main():
         loss /= num_images
         elapsed_time = time.time() - t0
 
-        print("Weight: {}, Time: {:.3f}s, Loss: {:.3f}"
+        print("Weight: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}"
               .format(weight_path, elapsed_time, loss))
 
 
