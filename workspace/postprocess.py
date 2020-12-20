@@ -169,17 +169,17 @@ def calc_loss(prediction, target, input_height, input_width,
     target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, cell_depth)
 
     # loss
-    loss_x = F.mse_loss(prediction_obj[:, 0],
-                        target[:, 0],
+    loss_x = F.mse_loss(prediction_obj[:, 0] / input_width,
+                        target[:, 0] / input_width,
                         reduction='sum')
-    loss_y = F.mse_loss(prediction_obj[:, 1],
-                        target[:, 1],
+    loss_y = F.mse_loss(prediction_obj[:, 1] / input_height,
+                        target[:, 1] / input_height,
                         reduction='sum')
-    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] + eps),
-                        torch.sqrt(target[:, 2] + eps),
+    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] / input_width + eps),
+                        torch.sqrt(target[:, 2] / input_width + eps),
                         reduction='sum')
-    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] + eps),
-                        torch.sqrt(target[:, 3] + eps),
+    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height + eps),
+                        torch.sqrt(target[:, 3] / input_height + eps),
                         reduction='sum')
     loss_obj = F.mse_loss(prediction_obj[:, 4],
                           target[:, 4],
