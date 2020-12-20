@@ -8,14 +8,14 @@ classes:
 height: 416
 width: 416
 anchors:
-    - [[4, 10], [10, 4], [7, 7]]
-    - [[8, 20], [20, 8], [14, 14]]
-    - [[12, 30], [30, 12], [21, 21]]
+    - [[2, 5], [5, 2], [4, 4]]
+    - [[4, 10], [10, 4], [8, 8]]
+    - [[8, 20], [20, 8], [16, 16]]
 num_epochs: 1000
 TP_IoU: 0.5
-NMS_IoU: 0.4
+NMS_IoU: 0.2
 objectness: 0.8
-learning_rate: 0.001
+learning_rate: 0.0001
 CUDA: True
 path:
     train: ./dataset/train
@@ -24,3 +24,4 @@ path:
     weight: ./dataset/weight
     weight_test: ./dataset/weight
     initial_weight: False
+    detect_weight: ./dataset/weight/2020-12-19_05-40-15_0655_14066.18.pt
