@@ -20,13 +20,20 @@ def main():
     nms_iou = cfg.config['NMS_IoU']
     objectness = cfg.config['objectness']
     cuda = cfg.config['CUDA']
-    weight_path = cfg.config['detect_weight']
+    weight_path = cfg.config['path']['detect_weight']
 
     # unloaded net
     net = None
 
     # main loop
     while True:
+        # print usage
+        print('Available commands:')
+        print('  detect image_path output_path')
+        print('  train')
+        print('  test')
+        print('  quit | q | exit')
+
         # get user input
         command = input()
 
@@ -63,7 +70,7 @@ def main():
                 prediction = detect.detect(net, image, anchors,
                                            objectness, nms_iou,
                                            cuda)
-                detect.write_prediction(prediction, output_path)
+                detect.write_prediction(prediction, output_path, height, width)
 
         # train
         elif command[0] == 'train':
@@ -80,10 +87,6 @@ def main():
         # show usage
         else:
             print('Unknown command.')
-            print('Available commands:')
-            print('  - detect')
-            print('  - train')
-            print('  - test')
 
 
 if __name__ == '__main__':
