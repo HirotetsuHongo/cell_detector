@@ -45,9 +45,7 @@ def main():
         print('Load initial weight from {}.'.format(initial_weight_dir))
 
     # optimizer
-    optimizer = optim.AdamW(net.parameters(),
-                            lr=learning_rate,
-                            weight_decay=0.1)
+    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
 
     # train
     for epoch in range(num_epochs):
@@ -77,14 +75,16 @@ def main():
                          images, targets,
                          anchors, height, width, cuda)
 
+            # log
+            with open('log_loss.txt', 'a') as f:
+                f.write('{:.2f}\n'.format(loss))
+
             # NaN
             if torch.isnan(loss):
                 print("NaN is occured.")
                 if weight_file:
                     net.load_state_dict(torch.load(weight_file))
-                    optimizer = optim.AdamW(net.parameters(),
-                                            lr=learning_rate,
-                                            weight_decay=0.1)
+                    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
                     print("Reset weight to {}.".format(weight_file))
                     break
                 else:
