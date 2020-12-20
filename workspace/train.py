@@ -23,6 +23,7 @@ def main():
     anchors = cfg.config['anchors']
     num_epochs = cfg.config['num_epochs']
     learning_rate = cfg.config['learning_rate']
+    weight_decay = cfg.config['weight_decay']
     cuda = cfg.config['CUDA']
     image_dir = cfg.config['path']['image']
     target_dir = cfg.config['path']['train']
@@ -45,7 +46,9 @@ def main():
         print('Load initial weight from {}.'.format(initial_weight_dir))
 
     # optimizer
-    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(net.parameters(),
+                            lr=learning_rate,
+                            weight_decay=weight_decay)
 
     # train
     for epoch in range(num_epochs):
@@ -84,7 +87,9 @@ def main():
                 print("NaN is occured.")
                 if weight_file:
                     net.load_state_dict(torch.load(weight_file))
-                    optimizer = optim.AdamW(net.parameters(), lr=learning_rate)
+                    optimizer = optim.AdamW(net.parameters(),
+                                            lr=learning_rate,
+                                            weight_decay=weight_decay)
                     print("Reset weight to {}.".format(weight_file))
                     break
                 else:
