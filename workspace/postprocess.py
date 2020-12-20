@@ -136,9 +136,6 @@ def suppress(prediction, objectness, iou):
     return prediction
 
 
-log_counter = 0
-
-
 def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
@@ -172,15 +169,21 @@ def calc_loss(prediction, target, input_height, input_width,
     target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, cell_depth)
 
     # loss
-    loss_x = F.mse_loss(prediction_obj[:, 0], target[:, 0], reduction='sum')
-    loss_y = F.mse_loss(prediction_obj[:, 1], target[:, 1], reduction='sum')
+    loss_x = F.mse_loss(prediction_obj[:, 0],
+                        target[:, 0],
+                        reduction='sum')
+    loss_y = F.mse_loss(prediction_obj[:, 1],
+                        target[:, 1],
+                        reduction='sum')
     loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] + eps),
                         torch.sqrt(target[:, 2] + eps),
                         reduction='sum')
     loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] + eps),
                         torch.sqrt(target[:, 3] + eps),
                         reduction='sum')
-    loss_obj = F.mse_loss(prediction_obj[:, 4], target[:, 4], reduction='sum')
+    loss_obj = F.mse_loss(prediction_obj[:, 4],
+                          target[:, 4],
+                          reduction='sum')
     loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4]))
     loss_cls = F.mse_loss(prediction_obj[:, 5:],
                           target[:, 5:],
@@ -188,26 +191,6 @@ def calc_loss(prediction, target, input_height, input_width,
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
         loss_obj + lambda_noobj * loss_noobj + loss_cls
-
-    # logging
-    global log_counter
-    if log_counter % 5000 == 0:
-        with open('log_pred.txt', 'a') as f:
-            f.write('{}\n'.format(prediction[:10]))
-        with open('log_compare.txt', 'a') as f:
-            f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-2),
-                                             target.unsqueeze(-2)), -2)))
-        with open('log_loss.txt', 'a') as f:
-            text = ('{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f}\n'
-                    .format(loss_x,
-                            loss_y,
-                            loss_w,
-                            loss_h,
-                            loss_obj,
-                            loss_noobj,
-                            loss_cls))
-            f.write(text)
-    log_counter += 1
 
     return loss
 
