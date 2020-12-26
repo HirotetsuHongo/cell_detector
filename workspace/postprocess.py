@@ -88,7 +88,6 @@ def convert(prediction, anchors, height, width, cuda):
     # log scale transform w and h
     prediction[:, :, :, :, 2] = torch.exp(prediction[:, :, :, :, 2])
     prediction[:, :, :, :, 3] = torch.exp(prediction[:, :, :, :, 3])
-    assert torch.any(~torch.isinf(prediction[:, :, :, :, 2:4]))
 
     # multiply anchors
     anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
@@ -96,10 +95,6 @@ def convert(prediction, anchors, height, width, cuda):
     if cuda:
         anchors = anchors.cuda()
     prediction[:, :, :, :, 2:4] *= anchors
-
-    # normalize w and h
-    prediction[:, :, :, :, 2] *= stride_x
-    prediction[:, :, :, :, 3] *= stride_y
 
     # sigmoid an objectness and class scores
     prediction[:, :, :, :, 4:] = torch.sigmoid(prediction[:, :, :, :, 4:])
