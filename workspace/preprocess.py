@@ -29,12 +29,22 @@ def load_bbox(path, num_classes, height, width, cuda):
     with open(path, 'r') as f:
         rows = csv.reader(f, delimiter=' ')
         for row in rows:
-            [cid, x, y, w, h] = [np.float(e) for e in row]
-            bbox = np.array([[x * width,
-                              y * height,
-                              w * width,
-                              h * height,
-                              1.0]])
+            if len(row) == 5:
+                [cid, x, y, w, h] = [np.float(e) for e in row]
+                bbox = np.array([[x * width,
+                                  y * height,
+                                  w * width,
+                                  h * height,
+                                  1.0]])
+            elif len(row) == 6:
+                [cid, x, y, w, h, c] = [np.float(e) for e in row]
+                bbox = np.array([[x * width,
+                                  y * height,
+                                  w * width,
+                                  h * height,
+                                  c]])
+            else:
+                assert len(row) == 5 or len(row) == 6
             classes = np.zeros((1, num_classes))
             classes[:, int(cid)] += 1.0
             bbox = np.concatenate((bbox, classes), axis=1)
