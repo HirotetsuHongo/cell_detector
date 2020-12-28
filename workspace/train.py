@@ -78,10 +78,6 @@ def main():
                          images, targets,
                          anchors, height, width, cuda)
 
-            # log
-            with open('log_loss.txt', 'a') as f:
-                f.write('{:.2f}\n'.format(loss))
-
             # NaN
             if torch.isnan(loss):
                 print("NaN is occured.")

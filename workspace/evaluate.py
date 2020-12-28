@@ -11,15 +11,24 @@ import os
 def main():
     # input assertion
     if len(sys.argv) != 3:
-        print('usage: {} prediction_path target_path'.format(sys.argv[0]))
+        print('usage: {} predictions_dir targets_dir'.format(sys.argv[0]))
         return
 
-    # inputs
-    prediction_path = os.listdir(sys.argv[1])
-    targets_path = sys.argv[2]
-
     # constants
-    prediction_paths = os.listdir(prediction_path)
-    target_paths = os.listdir(targets_path)
+    num_classes = len(cfg.config['classes'])
+    height = cfg.config['height']
+    width = cfg.config['width']
+    cuda = cfg.config['cuda']
+
+    # inputs
+    prediction_paths = sorted(os.listdir(sys.argv[1]))
+    target_paths = sorted(os.listdir(sys.argv[2]))
+
+    mAP = 0.0
+    for (prediction_path, target_path) in zip(prediction_paths, target_paths):
+        print('Calculating mAP of {} and {}.'
+              .format(prediction_path, target_path))
+        pbbox = pre.load_bbox(prediction_path, num_classes, height, width, cuda)
+        tbbox = pre.load_bbox(target_path, num_classes, height, width, cuda)
 
     return

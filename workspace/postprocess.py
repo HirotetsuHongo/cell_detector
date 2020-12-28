@@ -135,7 +135,7 @@ def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
     lambda_coord = 5.0
-    lambda_noobj = 0.5
+    lambda_noobj = 1.0
     eps = 0.001
 
     # initial info

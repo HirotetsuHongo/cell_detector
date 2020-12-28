@@ -26,7 +26,7 @@ def main():
     nms_iou = cfg.config['NMS_IoU']
     objectness = cfg.config['objectness']
     cuda = cfg.config['CUDA']
-    weight_path = cfg.config['detect_weight']
+    weight_path = cfg.config['path']['detect_weight']
 
     # network
     net = model.YOLOv3(num_channels, num_classes)
