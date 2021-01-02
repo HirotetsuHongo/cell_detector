@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-def postprocess(predictions, anchors, height, width, objectness, iou, cuda):
+def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
     assert len(predictions) == len(anchors)
     predictions = [convert(prediction, ancs, height, width, cuda)
                    for (prediction, ancs) in zip(predictions, anchors)]
@@ -15,7 +15,12 @@ def postprocess(predictions, anchors, height, width, objectness, iou, cuda):
                    for prediction in predictions]
     predictions = concat_scale(predictions)
     predictions = separate_batch(predictions)
-    predictions = [suppress(prediction, objectness, iou)
+    with open('log.csv', 'w') as f:
+        for pred in predictions[0]:
+            for e in pred:
+                f.write('{:.6f},'.format(e))
+            f.write('\n')
+    predictions = [suppress(prediction, confidency, iou)
                    for prediction in predictions]
 
     return predictions
@@ -113,18 +118,22 @@ def separate_batch(predictions):
     return predictions
 
 
-def suppress(prediction, objectness, iou):
-    # suppress by objectness threshold
-    objectness_mask = prediction[:, 4] > objectness
-    prediction = prediction[objectness_mask]
+def suppress(prediction, confidency, iou):
+    # get classes, class_scores and confidency
+    class_scores, classes = select_classes(prediction)
+    conf = class_scores * prediction[:, 4]
+
+    # suppress by confidency threshold
+    conf_mask = conf > confidency
+    prediction = prediction[conf_mask]
+    classes = classes[conf_mask]
+    conf = conf[conf_mask]
 
     # non-maximum_suppress
-    class_scores, classes = select_classes(prediction)
-    class_scores = class_scores * prediction[:, 4]
     nms_cls_mask = classes.unsqueeze(1) == classes
-    nms_obj_mask = class_scores.unsqueeze(1) < class_scores
+    nms_conf_mask = conf.unsqueeze(1) < conf
     nms_iou_mask = bbox_iou(prediction.unsqueeze(1), prediction) > iou
-    nms_mask = nms_cls_mask * nms_obj_mask * nms_iou_mask
+    nms_mask = nms_cls_mask * nms_conf_mask * nms_iou_mask
     nms_mask = ~torch.any(nms_mask, 1)
     prediction = prediction[nms_mask]
 
@@ -135,12 +144,13 @@ def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
     lambda_coord = 5.0
-    lambda_noobj = 1.0
+    lambda_obj = 1.0
+    lambda_noobj = 0.5
+    lambda_cls = 1.0
     eps = 0.001
 
     # initial info
     num_prediction = prediction.shape[0]
-    cell_depth = prediction.shape[1]
 
     # get target position in feature map
     stride_x = input_width / scale_width
@@ -149,8 +159,7 @@ def calc_loss(prediction, target, input_height, input_width,
     pos_y = target[:, 1] // stride_y
     pos = (pos_x + pos_y * scale_width) * num_anchors
     pos = pos.long()
-    pos = [pos + i for i in range(num_anchors)]
-    pos = torch.cat(pos, 0)
+    pos = torch.cat([pos + i for i in range(num_anchors)], 0)
 
     # mask
     mask_noobj = torch.ones(num_prediction).bool()
@@ -161,7 +170,7 @@ def calc_loss(prediction, target, input_height, input_width,
     prediction_noobj = prediction[mask_noobj]
 
     # target repeat number of anchors
-    target = target.unsqueeze(1).repeat(1, 3, 1).reshape(-1, cell_depth)
+    target = target.repeat(3, 1)
 
     # loss
     loss_x = F.mse_loss(prediction_obj[:, 0] / input_width,
@@ -179,13 +188,15 @@ def calc_loss(prediction, target, input_height, input_width,
     loss_obj = F.mse_loss(prediction_obj[:, 4],
                           target[:, 4],
                           reduction='sum')
-    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4]))
+    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
     loss_cls = F.mse_loss(prediction_obj[:, 5:],
                           target[:, 5:],
                           reduction='sum')
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
-        loss_obj + lambda_noobj * loss_noobj + loss_cls
+        lambda_obj * loss_obj + \
+        lambda_noobj * loss_noobj + \
+        lambda_cls * loss_cls
 
     return loss
 
