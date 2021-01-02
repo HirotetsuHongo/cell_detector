@@ -24,7 +24,7 @@ def main():
     width = cfg.config['width']
     anchors = cfg.config['anchors']
     nms_iou = cfg.config['NMS_IoU']
-    objectness = cfg.config['objectness']
+    confidency = cfg.config['confidency']
     cuda = cfg.config['CUDA']
     weight_path = cfg.config['path']['detect_weight']
 
@@ -38,7 +38,7 @@ def main():
     # detection
     image = pre.load_image(image_path, height, width, cuda)
     prediction = detect(net, image, anchors,
-                        objectness, nms_iou,
+                        confidency, nms_iou,
                         cuda)
 
     # write prediction into output
@@ -47,7 +47,7 @@ def main():
     return
 
 
-def detect(net, image, anchors, objectness, nms_iou, cuda):
+def detect(net, image, anchors, confidency, nms_iou, cuda):
     height = image.shape[1]
     width = image.shape[2]
     images = image.unsqueeze(0)
@@ -55,7 +55,7 @@ def detect(net, image, anchors, objectness, nms_iou, cuda):
     predictions = post.postprocess(predictions,
                                    anchors,
                                    height, width,
-                                   objectness, nms_iou,
+                                   confidency, nms_iou,
                                    cuda)
     prediction = predictions[0]
     return prediction
