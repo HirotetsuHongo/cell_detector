@@ -55,6 +55,24 @@ def calculate_loss(predictions, targets, anchors,
     return loss
 
 
+def calculate_AP(predictions, targets, anchors,
+                 height, width, confidency, iou, cuda):
+    num_classes = predictions[0].shape[-1] - 5
+    AP = torch.zeros(num_classes)
+    if cuda:
+        AP = AP.cuda()
+
+    predictions = postprocess(predictions,
+                              anchors,
+                              height,
+                              width,
+                              confidency,
+                              iou,
+                              cuda)
+
+    return AP
+
+
 def convert(prediction, anchors, height, width, cuda):
     batch_size = prediction.shape[0]
     h = prediction.shape[2]
