@@ -63,18 +63,18 @@ def detect(net, image, anchors, confidency, nms_iou, cuda):
 
 def write_prediction(prediction, output_path, height, width):
     # create bboxes
-    classes = post.select_classes(prediction)[1]
+    class_scores, classes = post.select_classes(prediction)
     xs = prediction[:, 0] / width
     ys = prediction[:, 1] / height
     ws = prediction[:, 2] / width
     hs = prediction[:, 3] / height
-    objs = prediction[:, 4]
+    confs = prediction[:, 4] * class_scores
     bboxes = torch.cat((classes.unsqueeze(-1),
                         xs.unsqueeze(-1),
                         ys.unsqueeze(-1),
                         ws.unsqueeze(-1),
                         hs.unsqueeze(-1),
-                        objs.unsqueeze(-1)),
+                        confs.unsqueeze(-1)),
                        -1)
 
     # constants
