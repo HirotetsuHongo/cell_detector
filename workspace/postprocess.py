@@ -65,13 +65,44 @@ def calculate_AP(predictions, targets, anchors,
                               confidency,
                               nms_iou,
                               cuda)
-    classes = select_classes(predictions)[0]
+    classes, class_scores = select_classes(predictions)
+    confidencies = predictions[:, 4] * class_scores
+    classes_t = select_classes(targets)[0]
+
+    # initialize AP
+    AP = torch.zeros(num_classes)
+    if cuda:
+        AP = AP.cuda()
 
     for c in range(num_classes):
-        preds_c = predictions[classes == c]
-        return
+        # select positive predictions for class c from predictions
+        positive = predictions
+        positive = positive[torch.sort(confidencies, descending=True).indices]
+        positive = positive[classes == c]
 
-    return
+        # determine whether positive is true or false
+        positive_truth = bbox_iou(positive.unsqueeze(1),
+                                  targets[classes_t == c])
+        positive_truth = positive_truth >= tp_iou
+        positive_truth = torch.any(positive_truth, dim=-1)
+
+        # calculate precision
+        precisions = []
+        for i in range(len(positive_truth)):
+            num_tp = torch.count_nonzero(positive_truth[:i+1])
+            num_p = i + 1.0
+            precision = num_tp / num_p
+            precisions.append(precision)
+
+        # adjust precisions
+        for i in range(len(precisions)):
+            precision = max(precisions[i:])
+            precisions[i] = precision
+
+        # calculate AP
+        AP[c] = sum(precisions) / len(precisions)
+
+    return AP
 
 
 def convert(prediction, anchors, height, width, cuda):

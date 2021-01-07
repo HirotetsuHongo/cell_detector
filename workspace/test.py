@@ -24,6 +24,9 @@ def main():
     height = cfg.config['height']
     width = cfg.config['width']
     anchors = cfg.config['anchors']
+    confidency = cfg.config['confidency']
+    tp_iou = cfg.config['TP_IoU']
+    nms_iou = cfg.config['NMS_IoU']
     cuda = cfg.config['CUDA']
     target_dir = cfg.config['path']['test']
     image_dir = cfg.config['path']['image']
@@ -47,10 +50,11 @@ def main():
 
         for i in range(num_images):
             # load images and targets
-            image = pre.load_images(image_paths[i:i+1],
-                                    height,
-                                    width,
-                                    cuda)
+            image = pre.load_image(image_paths[i],
+                                   height,
+                                   width,
+                                   cuda)
+            image = image.unsqueeze(0)
             target = pre.load_targets(target_paths[i:i+1],
                                       num_classes,
                                       height,
@@ -60,21 +64,29 @@ def main():
             # generate prediction
             prediction = net(image)
 
-            # calculate loss or 
+            # calculate loss or AP
             if mode == 'loss':
-                output += post.calculate_loss(prediction,
-                                              target,
-                                              anchors,
-                                              height,
-                                              width,
-                                              cuda)
+                loss = post.calculate_loss(prediction,
+                                           target,
+                                           anchors,
+                                           height,
+                                           width,
+                                           cuda)
+                loss = float(loss)
+                output += loss
+
             elif mode == 'AP':
-                output += post.calculate_AP(prediction,
-                                            target,
-                                            anchors,
-                                            height,
-                                            width,
-                                            cuda)
+                AP = post.calculate_AP(prediction,
+                                       target,
+                                       anchors,
+                                       height,
+                                       width,
+                                       confidency,
+                                       nms_iou,
+                                       tp_iou,
+                                       cuda)
+                AP = AP.numpy()
+                output += AP
 
         output /= num_images
         elapsed_time = time.time() - t0
@@ -83,8 +95,9 @@ def main():
             print("Weight: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}"
                   .format(weight_path, elapsed_time, output))
         elif mode == 'AP':
-            print("Weight: {}, Elapsed Time: {:.2f}s, mAP: {:.2f}"
-                  .format(weight_path, elapsed_time, output))
+            print("Weight: {}, Elapsed Time: {:.2f}s, AP: "
+                  .format(weight_path, elapsed_time)
+                  + ', '.join(['{:.2f}'.format(AP) for AP in list(output)]))
 
 
 if __name__ == '__main__':
