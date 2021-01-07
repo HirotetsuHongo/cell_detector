@@ -63,7 +63,7 @@ def detect(net, image, anchors, confidency, nms_iou, cuda):
 
 def write_prediction(prediction, output_path, height, width):
     # create bboxes
-    class_scores, classes = post.select_classes(prediction)
+    classes, class_scores = post.select_classes(prediction)
     xs = prediction[:, 0] / width
     ys = prediction[:, 1] / height
     ws = prediction[:, 2] / width

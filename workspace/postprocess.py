@@ -65,8 +65,10 @@ def calculate_AP(predictions, targets, anchors,
                               confidency,
                               nms_iou,
                               cuda)
+    classes = select_classes(predictions)[0]
 
     for c in range(num_classes):
+        preds_c = predictions[classes == c]
         return
 
     return
@@ -137,7 +139,7 @@ def separate_batch(predictions):
 
 def suppress(prediction, confidency, iou):
     # get classes, class_scores and confidency
-    class_scores, classes = select_classes(prediction)
+    classes, class_scores = select_classes(prediction)
     conf = class_scores * prediction[:, 4]
 
     # suppress by confidency threshold
@@ -219,7 +221,8 @@ def calc_loss(prediction, target, input_height, input_width,
 
 
 def select_classes(prediction):
-    return torch.max(prediction[..., 5:], dim=-1)
+    class_scores, classes = torch.max(prediction[..., 5:], dim=-1)
+    return classes, class_scores
 
 
 def bbox_iou(bboxes1, bboxes2):
