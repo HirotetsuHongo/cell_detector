@@ -56,21 +56,20 @@ def calculate_loss(predictions, targets, anchors,
 
 
 def calculate_AP(predictions, targets, anchors,
-                 height, width, confidency, iou, cuda):
+                 height, width, confidency, nms_iou, tp_iou, cuda):
     num_classes = predictions[0].shape[-1] - 5
-    AP = torch.zeros(num_classes)
-    if cuda:
-        AP = AP.cuda()
-
     predictions = postprocess(predictions,
                               anchors,
                               height,
                               width,
                               confidency,
-                              iou,
+                              nms_iou,
                               cuda)
 
-    return AP
+    for c in range(num_classes):
+        return
+
+    return
 
 
 def convert(prediction, anchors, height, width, cuda):
@@ -161,9 +160,9 @@ def suppress(prediction, confidency, iou):
 def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
-    lambda_coord = 5.0
-    lambda_obj = 1.0
-    lambda_noobj = 0.5
+    lambda_coord = 10.0
+    lambda_obj = 0.1
+    lambda_noobj = 0.1
     lambda_cls = 1.0
     eps = 0.001
 
@@ -204,11 +203,11 @@ def calc_loss(prediction, target, input_height, input_width,
                         torch.sqrt(target[:, 3] / input_height + eps),
                         reduction='sum')
     loss_obj = F.mse_loss(prediction_obj[:, 4],
-                          target[:, 4],
+                          target[:, 4] - eps,
                           reduction='sum')
     loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
     loss_cls = F.mse_loss(prediction_obj[:, 5:],
-                          target[:, 5:],
+                          target[:, 5:] - eps,
                           reduction='sum')
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
