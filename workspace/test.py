@@ -5,25 +5,18 @@ import postprocess as post
 
 import torch
 
-import sys
 import time
 
 
 def main():
-    # input assertion
-    if len(sys.argv) != 2 or (sys.argv[1] != 'loss' and sys.argv[1] != 'AP'):
-        print('Usage: {} MODE'.format(sys.argv[0]))
-        print('  MODE: loss | AP')
-        return
-
     # constants
-    mode = sys.argv[1]
     num_channels = cfg.config['num_channels']
     classes = cfg.config['classes']
     num_classes = len(classes)
     height = cfg.config['height']
     width = cfg.config['width']
     anchors = cfg.config['anchors']
+    num_anchors = len(anchors[0])
     confidency = cfg.config['confidency']
     tp_iou = cfg.config['TP_IoU']
     nms_iou = cfg.config['NMS_IoU']
@@ -37,7 +30,7 @@ def main():
     num_images = len(image_paths)
 
     # network
-    net = model.YOLOv3(num_channels, num_classes)
+    net = model.YOLOv3(num_channels, num_classes, num_anchors)
     if cuda:
         net = net.cuda()
 
@@ -45,11 +38,13 @@ def main():
     for weight_path in weight_paths:
         net.load_state_dict(torch.load(weight_path))
         net.eval()
-        output = 0.0
+        loss = 0.0
+        predictions = []
+        targets = []
         t0 = time.time()
 
         for i in range(num_images):
-            # load images and targets
+            # load image and target
             image = pre.load_image(image_paths[i],
                                    height,
                                    width,
@@ -61,43 +56,41 @@ def main():
                                       width,
                                       cuda)
 
-            # generate prediction
+            # predict bbox
             prediction = net(image)
 
-            # calculate loss or AP
-            if mode == 'loss':
-                loss = post.calculate_loss(prediction,
-                                           target,
-                                           anchors,
-                                           height,
-                                           width,
-                                           cuda)
-                loss = float(loss)
-                output += loss
+            # calculate loss
+            loss += float(post.calculate_loss(prediction,
+                                              target,
+                                              anchors,
+                                              height,
+                                              width,
+                                              cuda))
 
-            elif mode == 'AP':
-                AP = post.calculate_AP(prediction,
-                                       target,
-                                       anchors,
-                                       height,
-                                       width,
-                                       confidency,
-                                       nms_iou,
-                                       tp_iou,
-                                       cuda)
-                AP = AP.numpy()
-                output += AP
+            # save prediction and target as numpy array
+            prediction = post.postprocess(prediction,
+                                          anchors,
+                                          height,
+                                          width,
+                                          confidency,
+                                          nms_iou,
+                                          cuda)
+            predictions.extend([pred.detach() for pred in prediction])
+            targets.extend([tagt.detach() for tagt in target])
 
-        output /= num_images
+        # normalize loss
+        loss /= num_images
+
+        # calculate AP
+        # AP = post.calculate_AP(predictions, targets, tp_iou, cuda)
+        # AP = ['{:.2f}'.format(ap * 100) for ap in AP]
+
         elapsed_time = time.time() - t0
 
-        if mode == 'loss':
-            print("Weight: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}"
-                  .format(weight_path, elapsed_time, output))
-        elif mode == 'AP':
-            print("Weight: {}, Elapsed Time: {:.2f}s, AP: "
-                  .format(weight_path, elapsed_time)
-                  + ', '.join(['{:.2f}'.format(AP) for AP in list(output)]))
+        print('Weight: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}, AP: '
+              .format(weight_path, elapsed_time, loss)
+              # + ', '.join(AP)
+              )
 
 
 if __name__ == '__main__':

@@ -21,6 +21,7 @@ def main():
     height = cfg.config['height']
     width = cfg.config['width']
     anchors = cfg.config['anchors']
+    num_anchors = len(anchors[0])
     num_epochs = cfg.config['num_epochs']
     learning_rate = cfg.config['learning_rate']
     weight_decay = cfg.config['weight_decay']
@@ -37,7 +38,7 @@ def main():
     weight_file = False
 
     # network
-    net = model.YOLOv3(num_channels, num_classes)
+    net = model.YOLOv3(num_channels, num_classes, num_anchors)
     if cuda:
         net = net.cuda()
     net = net.train(True)

@@ -25,4 +25,4 @@ path:
     weight: ./dataset/weight
     weight_test: ./dataset/weight_test
     initial_weight: False
-    detect_weight: ./dataset/weight_test/2020-12-31_19-57-56_0200_595.49.pt
+    detect_weight: ./dataset/weight_test/2021-01-14_23-24-11_0201_108.19.pt

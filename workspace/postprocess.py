@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -15,12 +16,12 @@ def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
                    for prediction in predictions]
     predictions = concat_scale(predictions)
     predictions = separate_batch(predictions)
-    with open('log.csv', 'w') as f:
-        for pred in predictions[0]:
-            for e in pred:
-                f.write('{:.6f},'.format(e))
-            f.write('\n')
-    predictions = [suppress(prediction, confidency, iou)
+    # with open('log.csv', 'w') as f:
+    #     for pred in predictions:
+    #         for bbox in pred:
+    #             f.write(','.join(['{:.6f}'.format(x) for x in list(bbox)]))
+    #             f.write('\n')
+    predictions = [suppress(prediction, confidency, iou, cuda)
                    for prediction in predictions]
 
     return predictions
@@ -55,52 +56,62 @@ def calculate_loss(predictions, targets, anchors,
     return loss
 
 
-def calculate_AP(predictions, targets, anchors,
-                 height, width, confidency, nms_iou, tp_iou, cuda):
+def calculate_AP(predictions, targets, tp_iou, cuda):
     num_classes = predictions[0].shape[-1] - 5
-    predictions = postprocess(predictions,
-                              anchors,
-                              height,
-                              width,
-                              confidency,
-                              nms_iou,
-                              cuda)
-    classes, class_scores = select_classes(predictions)
-    confidencies = predictions[:, 4] * class_scores
-    classes_t = select_classes(targets)[0]
+    classes, class_scores = zip(*[select_classes(pred)
+                                  if pred.shape[0] != 0 else pred[:, 0]
+                                  for pred in predictions])
+    confidencies = [pred[:, 4] * score
+                    for pred, score in zip(predictions, class_scores)]
+    classes_t = [torch.argmax(tagt[:, 5:], -1)
+                 if tagt.shape[0] else tagt[:, 0]
+                 for tagt in targets]
 
     # initialize AP
-    AP = torch.zeros(num_classes)
-    if cuda:
-        AP = AP.cuda()
+    AP = []
 
     for c in range(num_classes):
-        # select positive predictions for class c from predictions
-        positive = predictions
-        positive = positive[torch.sort(confidencies, descending=True).indices]
-        positive = positive[classes == c]
+        # select positive prediction for class c from prediction
+        confs = [conf[cls == c] for conf, cls in zip(confidencies, classes)]
+        positives = [pred[cls == c] for pred, cls in zip(predictions, classes)]
+        positive_truths = [bbox_iou(pst.unsqueeze(1), tgt[cls_t == c])
+                           for pst, tgt, cls_t
+                           in zip(positives, targets, classes_t)]
+        positive_truths = [torch.any(truth >= tp_iou, dim=-1)
+                           for truth in positive_truths]
 
-        # determine whether positive is true or false
-        positive_truth = bbox_iou(positive.unsqueeze(1),
-                                  targets[classes_t == c])
-        positive_truth = positive_truth >= tp_iou
-        positive_truth = torch.any(positive_truth, dim=-1)
+        # concatnate confs, positives and positive_truths
+        conf = torch.cat(confs, dim=0)
+        positive = torch.cat(positives, dim=0)
+        positive_truth = torch.cat(positive_truths, dim=0)
 
-        # calculate precision
+        # sort by class_score
+        order = torch.argsort(conf)
+        positive = positive[order]
+        positive_truth = positive_truth[order]
+
+        # calculate precisions
         precisions = []
-        for i in range(len(positive_truth)):
+        print(positive_truth.shape)
+        for i in range(positive_truth.shape[0]):
             num_tp = torch.count_nonzero(positive_truth[:i+1])
             num_p = i + 1.0
             precision = num_tp / num_p
+            precision = float(precision)
             precisions.append(precision)
 
+        print(6)
         # adjust precisions
         for i in range(len(precisions)):
             precision = max(precisions[i:])
             precisions[i] = precision
 
+        print(7)
         # calculate AP
-        AP[c] = sum(precisions) / len(precisions)
+        if len(precisions) != 0.0:
+            AP.append(sum(precisions) / len(precisions))
+        else:
+            AP.append(np.nan)
 
     return AP
 
@@ -115,44 +126,45 @@ def convert(prediction, anchors, height, width, cuda):
     cell_depth = prediction.shape[1] // num_anchors
 
     # reshape
-    prediction = prediction.reshape(batch_size, num_anchors, cell_depth, h, w)
-    prediction = prediction.permute(0, 1, 3, 4, 2)
+    prediction = prediction.permute(0, 2, 3, 1)
+    prediction = prediction.reshape(batch_size, h*w*num_anchors, cell_depth)
 
     # sigmoid x and y
-    prediction[:, :, :, :, 0:2] = torch.sigmoid(prediction[:, :, :, :, 0:2])
+    prediction[..., 0:2] = torch.sigmoid(prediction[..., 0:2])
 
     # add offset
-    grid_x = torch.arange(w)
-    grid_y = torch.arange(h)
+    offset_x = torch.arange(w)
+    offset_y = torch.arange(h)
     if cuda:
-        grid_x = grid_x.cuda()
-        grid_y = grid_y.cuda()
-    offset_y, offset_x = torch.meshgrid(grid_y, grid_x)
-    offset_x = offset_x.unsqueeze(-1)
-    offset_y = offset_y.unsqueeze(-1)
-    offset = torch.cat((offset_x, offset_y), -1)
-    prediction[:, :, :, :, 0:2] += offset
+        offset_x = offset_x.cuda()
+        offset_y = offset_y.cuda()
+    offset_x = offset_x.unsqueeze(0).repeat(h, 1)
+    offset_y = offset_y.unsqueeze(1).repeat(1, w)
+    offset = torch.cat((offset_x.unsqueeze(-1), offset_y.unsqueeze(-1)), -1)
+    offset = offset.repeat(1, 1, num_anchors).reshape(-1, 2)
+    prediction[..., 0:2] += offset
 
     # normalize x and y
-    prediction[:, :, :, :, 0] *= stride_x
-    prediction[:, :, :, :, 1] *= stride_y
-
-    # permute
-    prediction = prediction.permute(0, 2, 3, 1, 4)
+    prediction[..., 0] *= stride_x
+    prediction[..., 1] *= stride_y
 
     # log scale transform w and h
-    prediction[:, :, :, :, 2] = torch.exp(prediction[:, :, :, :, 2])
-    prediction[:, :, :, :, 3] = torch.exp(prediction[:, :, :, :, 3])
+    prediction[..., 2] = torch.exp(prediction[..., 2])
+    prediction[..., 3] = torch.exp(prediction[..., 3])
 
     # multiply anchors
     anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
     anchors = torch.tensor(anchors)
     if cuda:
         anchors = anchors.cuda()
-    prediction[:, :, :, :, 2:4] *= anchors
+    anchors = anchors.repeat(h*w, 1)
+    prediction[..., 2:4] *= anchors
 
     # sigmoid an objectness and class scores
-    prediction[:, :, :, :, 4:] = torch.sigmoid(prediction[:, :, :, :, 4:])
+    prediction[..., 4:] = torch.sigmoid(prediction[..., 4:])
+
+    # reshape
+    prediction = prediction.reshape(batch_size, h, w, num_anchors, cell_depth)
 
     return prediction
 
@@ -168,7 +180,7 @@ def separate_batch(predictions):
     return predictions
 
 
-def suppress(prediction, confidency, iou):
+def suppress(prediction, confidency, iou, cuda):
     # get classes, class_scores and confidency
     classes, class_scores = select_classes(prediction)
     conf = class_scores * prediction[:, 4]
@@ -179,7 +191,7 @@ def suppress(prediction, confidency, iou):
     classes = classes[conf_mask]
     conf = conf[conf_mask]
 
-    # non-maximum_suppress
+    # non-maximum suppression
     nms_cls_mask = classes.unsqueeze(1) == classes
     nms_conf_mask = conf.unsqueeze(1) < conf
     nms_iou_mask = bbox_iou(prediction.unsqueeze(1), prediction) > iou
@@ -196,8 +208,8 @@ def calc_loss(prediction, target, input_height, input_width,
     lambda_coord = 10.0
     lambda_obj = 0.1
     lambda_noobj = 0.1
-    lambda_cls = 1.0
-    eps = 0.001
+    lambda_cls = 0.2
+    eps = 0.1
 
     # initial info
     num_prediction = prediction.shape[0]
@@ -220,7 +232,7 @@ def calc_loss(prediction, target, input_height, input_width,
     prediction_noobj = prediction[mask_noobj]
 
     # target repeat number of anchors
-    target = target.repeat(3, 1)
+    target = target.repeat(num_anchors, 1)
 
     # loss
     loss_x = F.mse_loss(prediction_obj[:, 0] / input_width,
@@ -229,18 +241,19 @@ def calc_loss(prediction, target, input_height, input_width,
     loss_y = F.mse_loss(prediction_obj[:, 1] / input_height,
                         target[:, 1] / input_height,
                         reduction='sum')
-    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] / input_width + eps),
-                        torch.sqrt(target[:, 2] / input_width + eps),
+    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] / input_width),
+                        torch.sqrt(target[:, 2] / input_width),
                         reduction='sum')
-    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height + eps),
-                        torch.sqrt(target[:, 3] / input_height + eps),
+    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height),
+                        torch.sqrt(target[:, 3] / input_height),
                         reduction='sum')
-    loss_obj = F.mse_loss(prediction_obj[:, 4],
-                          target[:, 4] - eps,
+    loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
+                          torch.logit(target[:, 4], eps),
                           reduction='sum')
-    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
-    loss_cls = F.mse_loss(prediction_obj[:, 5:],
-                          target[:, 5:] - eps,
+    loss_noobj = torch.sum(torch.square(torch.logit(prediction_noobj[:, 4:],
+                                                    eps)))
+    loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
+                          torch.logit(target[:, 5:], eps),
                           reduction='sum')
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
@@ -285,6 +298,6 @@ def bbox_iou(bboxes1, bboxes2):
     area2 = w2 * h2
     areai = wi * hi
     areau = area1 + area2 - areai
-    iou = areai / areau + eps
+    iou = areai / (areau + eps)
 
     return iou

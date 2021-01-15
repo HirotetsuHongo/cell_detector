@@ -23,13 +23,14 @@ def main():
     height = cfg.config['height']
     width = cfg.config['width']
     anchors = cfg.config['anchors']
+    num_anchors = len(anchors[0])
     nms_iou = cfg.config['NMS_IoU']
     confidency = cfg.config['confidency']
     cuda = cfg.config['CUDA']
     weight_path = cfg.config['path']['detect_weight']
 
     # network
-    net = model.YOLOv3(num_channels, num_classes)
+    net = model.YOLOv3(num_channels, num_classes, num_anchors)
     if cuda:
         net = net.cuda()
     net.load_state_dict(torch.load(weight_path))
