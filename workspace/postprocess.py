@@ -59,7 +59,8 @@ def calculate_loss(predictions, targets, anchors,
 def calculate_AP(predictions, targets, tp_iou, cuda):
     num_classes = predictions[0].shape[-1] - 5
     classes, class_scores = zip(*[select_classes(pred)
-                                  if pred.shape[0] != 0 else pred[:, 0]
+                                  if pred.shape[0] != 0
+                                  else (pred[:, 0], pred[:, 0])
                                   for pred in predictions])
     confidencies = [pred[:, 4] * score
                     for pred, score in zip(predictions, class_scores)]
@@ -91,22 +92,12 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
         positive_truth = positive_truth[order]
 
         # calculate precisions
-        precisions = []
-        print(positive_truth.shape)
-        for i in range(positive_truth.shape[0]):
-            num_tp = torch.count_nonzero(positive_truth[:i+1])
-            num_p = i + 1.0
-            precision = num_tp / num_p
-            precision = float(precision)
-            precisions.append(precision)
+        precisions = torch.arange(positive_truth.shape[0]) + 1
+        precisions = [positive_truth[:i] for i in precisions]
+        precisions = [float(torch.count_nonzero(p) / (i + 1.0))
+                      for p, i in zip(precisions, range(len(precisions)))]
+        precisions = [max(precisions[i:]) for i in range(len(precisions))]
 
-        print(6)
-        # adjust precisions
-        for i in range(len(precisions)):
-            precision = max(precisions[i:])
-            precisions[i] = precision
-
-        print(7)
         # calculate AP
         if len(precisions) != 0.0:
             AP.append(sum(precisions) / len(precisions))
@@ -153,7 +144,6 @@ def convert(prediction, anchors, height, width, cuda):
     prediction[..., 3] = torch.exp(prediction[..., 3])
 
     # multiply anchors
-    anchors = [[a[0] / stride_x, a[1] / stride_y] for a in anchors]
     anchors = torch.tensor(anchors)
     if cuda:
         anchors = anchors.cuda()
@@ -206,9 +196,9 @@ def calc_loss(prediction, target, input_height, input_width,
               scale_height, scale_width, num_anchors):
     # constants
     lambda_coord = 10.0
-    lambda_obj = 0.1
-    lambda_noobj = 0.1
-    lambda_cls = 0.2
+    lambda_obj = 1
+    lambda_noobj = 0.5
+    lambda_cls = 1
     eps = 0.1
 
     # initial info
@@ -247,13 +237,12 @@ def calc_loss(prediction, target, input_height, input_width,
     loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height),
                         torch.sqrt(target[:, 3] / input_height),
                         reduction='sum')
-    loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
-                          torch.logit(target[:, 4], eps),
+    loss_obj = F.mse_loss(prediction_obj[:, 4],
+                          target[:, 4] - eps,
                           reduction='sum')
-    loss_noobj = torch.sum(torch.square(torch.logit(prediction_noobj[:, 4:],
-                                                    eps)))
-    loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
-                          torch.logit(target[:, 5:], eps),
+    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
+    loss_cls = F.mse_loss(prediction_obj[:, 5:],
+                          target[:, 5:] - eps,
                           reduction='sum')
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \

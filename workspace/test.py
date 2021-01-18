@@ -82,15 +82,14 @@ def main():
         loss /= num_images
 
         # calculate AP
-        # AP = post.calculate_AP(predictions, targets, tp_iou, cuda)
-        # AP = ['{:.2f}'.format(ap * 100) for ap in AP]
+        AP = post.calculate_AP(predictions, targets, tp_iou, cuda)
+        AP = ['{:.2f}'.format(ap * 100) for ap in AP]
 
         elapsed_time = time.time() - t0
 
         print('Weight: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}, AP: '
               .format(weight_path, elapsed_time, loss)
-              # + ', '.join(AP)
-              )
+              + ', '.join(AP))
 
 
 if __name__ == '__main__':
