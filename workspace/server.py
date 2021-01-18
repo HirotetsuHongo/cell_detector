@@ -35,7 +35,8 @@ def main():
         print('  quit | q | exit')
 
         # get user input
-        command = input()
+        with open('pipe', 'r') as pipe:
+            command = pipe.read()
 
         # condition to quit
         if command == 'q':
