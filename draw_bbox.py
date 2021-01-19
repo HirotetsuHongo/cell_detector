@@ -3,27 +3,30 @@ import cv2
 import sys
 
 
-def draw_bbox(image, bboxes, s):
+def draw_bbox(image, bboxes, num_classes, s):
     # get width and height
     height = image.shape[0]
     width = image.shape[1]
 
     # make colors
-    num_boxes = len(bboxes)
-    colors = np.arange(num_boxes)
-    colors = [(h * 359 / num_boxes, s, 100) for h in colors]
+    colors = np.arange(num_classes)
+    colors = [(h * 359 / num_classes, s, 100) for h in colors]
     colors = [hsv2bgr(hsv) for hsv in colors]
 
     # draw
-    for bbox, color in zip(bboxes, colors):
+    for bbox in bboxes:
+        c = int(bbox[0])
         x = bbox[1] * width
         y = bbox[2] * height
         w = bbox[3] * width
         h = bbox[4] * height
+
+        color = colors[c]
         x1 = int(x - w / 2)
         y1 = int(y + h / 2)
         x2 = int(x + w / 2)
         y2 = int(y - h / 2)
+
         image = cv2.rectangle(image, (x1, y1), (x2, y2), color)
 
     return image
@@ -71,16 +74,18 @@ def read_table(path):
 
 def main():
     # assert standard input arguments
-    if len(sys.argv) != 4 and len(sys.argv) != 5:
-        print('usage: {} image bboxes output [s]'.format(sys.argv[0]))
+    if len(sys.argv) != 5 and len(sys.argv) != 6:
+        print('usage: {} image bboxes output num_classes [s]'
+              .format(sys.argv[0]))
         return
 
     # set arguments
     image_path = sys.argv[1]
     bboxes_path = sys.argv[2]
     output_path = sys.argv[3]
-    if len(sys.argv) == 5 and 0 <= int(sys.argv[4]) <= 100:
-        s = int(sys.argv[4])
+    num_classes = int(sys.argv[4])
+    if len(sys.argv) == 6 and 0 <= int(sys.argv[5]) <= 100:
+        s = int(sys.argv[5])
     else:
         s = 50
 
@@ -95,7 +100,7 @@ def main():
     assert image is not None
 
     # draw
-    drawed_image = draw_bbox(image, bboxes, s)
+    drawed_image = draw_bbox(image, bboxes, num_classes, s)
 
     # write image
     cv2.imwrite(output_path, drawed_image)
