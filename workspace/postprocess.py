@@ -237,12 +237,16 @@ def calc_loss(prediction, target, input_height, input_width,
     loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height),
                         torch.sqrt(target[:, 3] / input_height),
                         reduction='sum')
-    loss_obj = F.mse_loss(prediction_obj[:, 4],
-                          target[:, 4] - eps,
+    loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
+                          torch.logit(target[:, 4], eps),
                           reduction='sum')
-    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
-    loss_cls = F.mse_loss(prediction_obj[:, 5:],
-                          target[:, 5:] - eps,
+    loss_noobj = F.mse_loss(torch.logit(prediction_noobj[:, 4:], eps),
+                            torch.logit(
+                                torch.zeros_like(
+                                    prediction_noobj[:, 4:]), eps),
+                            reduction='sum')
+    loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
+                          torch.logit(target[:, 5:], eps),
                           reduction='sum')
     loss = \
         lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
