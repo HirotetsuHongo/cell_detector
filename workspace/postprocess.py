@@ -16,11 +16,11 @@ def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
                    for prediction in predictions]
     predictions = concat_scale(predictions)
     predictions = separate_batch(predictions)
-    # with open('log.csv', 'w') as f:
-    #     for pred in predictions:
-    #         for bbox in pred:
-    #             f.write(','.join(['{:.6f}'.format(x) for x in list(bbox)]))
-    #             f.write('\n')
+    with open('log.csv', 'w') as f:
+        for pred in predictions:
+            for bbox in pred:
+                f.write(','.join(['{:.6f}'.format(x) for x in list(bbox)]))
+                f.write('\n')
     predictions = [suppress(prediction, confidency, iou, cuda)
                    for prediction in predictions]
 
@@ -34,24 +34,29 @@ def calculate_loss(predictions, targets, anchors,
 
     loss = 0.0
 
-    for prediction in predictions:
+    for prediction, ancs in zip(predictions, anchors):
         assert prediction.shape[0] == len(targets)
         batch_size = prediction.shape[0]
         scale_height = prediction.shape[1]
         scale_width = prediction.shape[2]
         num_anchors = prediction.shape[3]
+        assert len(ancs) == num_anchors
+        ls = 0.0
         for i in range(batch_size):
-            loss += calc_loss(prediction[i].reshape(scale_height
-                                                    * scale_width
-                                                    * num_anchors,
-                                                    -1),
-                              targets[i],
-                              height,
-                              width,
-                              scale_height,
-                              scale_width,
-                              num_anchors)
-        loss /= batch_size
+            ls += calc_loss(prediction[i].reshape(scale_height
+                                                  * scale_width
+                                                  * num_anchors,
+                                                  -1),
+                            targets[i],
+                            height,
+                            width,
+                            scale_height,
+                            scale_width,
+                            ancs,
+                            cuda)
+        loss += ls / batch_size
+
+    loss /= len(predictions)
 
     return loss
 
@@ -65,7 +70,7 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
     confidencies = [pred[:, 4] * score
                     for pred, score in zip(predictions, class_scores)]
     classes_t = [torch.argmax(tagt[:, 5:], -1)
-                 if tagt.shape[0] else tagt[:, 0]
+                 if tagt.shape[0] != 0 else tagt[:, 0]
                  for tagt in targets]
 
     # initialize AP
@@ -73,18 +78,21 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
 
     for c in range(num_classes):
         # select positive prediction for class c from prediction
-        confs = [conf[cls == c] for conf, cls in zip(confidencies, classes)]
         positives = [pred[cls == c] for pred, cls in zip(predictions, classes)]
-        positive_truths = [bbox_iou(pst.unsqueeze(1), tgt[cls_t == c])
-                           for pst, tgt, cls_t
-                           in zip(positives, targets, classes_t)]
-        positive_truths = [torch.any(truth >= tp_iou, dim=-1)
-                           for truth in positive_truths]
+        trues = [tagt[cls_t == c] for tagt, cls_t in zip(targets, classes_t)]
+        confs = [conf[cls == c] for conf, cls in zip(confidencies, classes)]
+        true_positive_tables = [bbox_iou(pstv.unsqueeze(1), true) >= tp_iou
+                                for pstv, true
+                                in zip(positives, trues)]
+        positive_truths = [torch.any(table, -1)
+                           for table in true_positive_tables]
+        num_true_negatives = [torch.count_nonzero(~torch.sum(table, 0).bool())
+                              for table in true_positive_tables]
 
         # concatnate confs, positives and positive_truths
-        conf = torch.cat(confs, dim=0)
         positive = torch.cat(positives, dim=0)
         positive_truth = torch.cat(positive_truths, dim=0)
+        conf = torch.cat(confs, dim=0)
 
         # sort by class_score
         order = torch.argsort(conf)
@@ -92,45 +100,44 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
         positive_truth = positive_truth[order]
 
         # calculate precisions
-        precisions = torch.arange(positive_truth.shape[0]) + 1
-        precisions = [positive_truth[:i] for i in precisions]
-        precisions = [float(torch.count_nonzero(p) / (i + 1.0))
-                      for p, i in zip(precisions, range(len(precisions)))]
+        precisions = torch.arange(positive_truth.shape[0])
+        precisions = [float(torch.count_nonzero(positive_truth[:i+1]) / i+1)
+                      for i in precisions
+                      if positive_truth[i]]
         precisions = [max(precisions[i:]) for i in range(len(precisions))]
 
         # calculate AP
-        if len(precisions) != 0.0:
-            AP.append(sum(precisions) / len(precisions))
-        else:
-            AP.append(np.nan)
+        AP.append(sum(precisions) / (len(precisions) + num_true_negatives))
 
     return AP
 
 
 def convert(prediction, anchors, height, width, cuda):
     batch_size = prediction.shape[0]
-    h = prediction.shape[2]
-    w = prediction.shape[3]
-    stride_x = width / w
-    stride_y = height / h
+    scale_height = prediction.shape[2]
+    scale_width = prediction.shape[3]
+    stride_x = width / scale_width
+    stride_y = height / scale_height
     num_anchors = len(anchors)
     cell_depth = prediction.shape[1] // num_anchors
 
     # reshape
     prediction = prediction.permute(0, 2, 3, 1)
-    prediction = prediction.reshape(batch_size, h*w*num_anchors, cell_depth)
+    prediction = prediction.reshape(batch_size,
+                                    scale_height*scale_width*num_anchors,
+                                    cell_depth)
 
     # sigmoid x and y
     prediction[..., 0:2] = torch.sigmoid(prediction[..., 0:2])
 
     # add offset
-    offset_x = torch.arange(w)
-    offset_y = torch.arange(h)
+    offset_x = torch.arange(scale_width)
+    offset_y = torch.arange(scale_height)
     if cuda:
         offset_x = offset_x.cuda()
         offset_y = offset_y.cuda()
-    offset_x = offset_x.unsqueeze(0).repeat(h, 1)
-    offset_y = offset_y.unsqueeze(1).repeat(1, w)
+    offset_x = offset_x.unsqueeze(0).repeat(scale_height, 1)
+    offset_y = offset_y.unsqueeze(1).repeat(1, scale_width)
     offset = torch.cat((offset_x.unsqueeze(-1), offset_y.unsqueeze(-1)), -1)
     offset = offset.repeat(1, 1, num_anchors).reshape(-1, 2)
     prediction[..., 0:2] += offset
@@ -147,14 +154,18 @@ def convert(prediction, anchors, height, width, cuda):
     anchors = torch.tensor(anchors)
     if cuda:
         anchors = anchors.cuda()
-    anchors = anchors.repeat(h*w, 1)
+    anchors = anchors.repeat(scale_width*scale_height, 1)
     prediction[..., 2:4] *= anchors
 
     # sigmoid an objectness and class scores
     prediction[..., 4:] = torch.sigmoid(prediction[..., 4:])
 
     # reshape
-    prediction = prediction.reshape(batch_size, h, w, num_anchors, cell_depth)
+    prediction = prediction.reshape(batch_size,
+                                    scale_height,
+                                    scale_width,
+                                    num_anchors,
+                                    cell_depth)
 
     return prediction
 
@@ -193,23 +204,26 @@ def suppress(prediction, confidency, iou, cuda):
 
 
 def calc_loss(prediction, target, input_height, input_width,
-              scale_height, scale_width, num_anchors):
+              scale_height, scale_width, anchors, cuda):
     # constants
-    lambda_coord = 10.0
-    lambda_obj = 1
+    lambda_coord = 20.0
+    lambda_obj = 1.0
     lambda_noobj = 0.5
-    lambda_cls = 1
+    lambda_cls = 5.0
     eps = 0.1
 
     # initial info
+    num_anchors = len(anchors)
     num_prediction = prediction.shape[0]
 
-    # get target position in feature map
+    # get stride
     stride_x = input_width / scale_width
     stride_y = input_height / scale_height
-    pos_x = target[:, 0] // stride_x
-    pos_y = target[:, 1] // stride_y
-    pos = (pos_x + pos_y * scale_width) * num_anchors
+
+    # get target offset and index
+    offset_x = target[:, 0] // stride_x
+    offset_y = target[:, 1] // stride_y
+    pos = (offset_x + offset_y * scale_width) * num_anchors
     pos = pos.long()
     pos = torch.cat([pos + i for i in range(num_anchors)], 0)
 
@@ -225,34 +239,50 @@ def calc_loss(prediction, target, input_height, input_width,
     target = target.repeat(num_anchors, 1)
 
     # loss
-    loss_x = F.mse_loss(prediction_obj[:, 0] / input_width,
-                        target[:, 0] / input_width,
-                        reduction='sum')
-    loss_y = F.mse_loss(prediction_obj[:, 1] / input_height,
-                        target[:, 1] / input_height,
-                        reduction='sum')
-    loss_w = F.mse_loss(torch.sqrt(prediction_obj[:, 2] / input_width),
-                        torch.sqrt(target[:, 2] / input_width),
-                        reduction='sum')
-    loss_h = F.mse_loss(torch.sqrt(prediction_obj[:, 3] / input_height),
-                        torch.sqrt(target[:, 3] / input_height),
-                        reduction='sum')
-    loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
-                          torch.logit(target[:, 4], eps),
+    loss_x = F.mse_loss(prediction_obj[:, 0],
+                        target[:, 0],
+                        reduction='sum') / (stride_x ** 2)
+    loss_y = F.mse_loss(prediction_obj[:, 1],
+                        target[:, 1],
+                        reduction='sum') / (stride_y ** 2)
+    loss_w = torch.log(F.mse_loss(prediction_obj[:, 2],
+                                  target[:, 2],
+                                  reduction='sum') + 1)
+    loss_h = torch.log(F.mse_loss(prediction_obj[:, 3],
+                                  target[:, 3],
+                                  reduction='sum') + 1)
+    loss_obj = F.mse_loss(prediction_obj[:, 4],
+                          target[:, 4] - eps,
                           reduction='sum')
-    loss_noobj = F.mse_loss(torch.logit(prediction_noobj[:, 4:], eps),
-                            torch.logit(
-                                torch.zeros_like(
-                                    prediction_noobj[:, 4:]), eps),
-                            reduction='sum')
-    loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
-                          torch.logit(target[:, 5:], eps),
+    loss_noobj = torch.sum(torch.square(prediction_noobj[:, 4:]))
+    loss_cls = F.mse_loss(prediction_obj[:, 5:],
+                          target[:, 5:] - eps,
                           reduction='sum')
+
     loss = \
-        lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
+        lambda_coord * (loss_x + loss_y + loss_w / 2 + loss_h / 2) + \
         lambda_obj * loss_obj + \
         lambda_noobj * loss_noobj + \
         lambda_cls * loss_cls
+
+    n = torch.abs(torch.randn(1))[0]
+    if n < 5.0e-4:
+        with open('loss_log_{}-{}-{}-{}.txt'
+                  .format(lambda_coord,
+                          lambda_obj,
+                          lambda_noobj,
+                          lambda_cls),
+                  'a') as f:
+            f.write('{} x {}\n'.format(stride_x, stride_y))
+            f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
+                                             target.unsqueeze(-1)),
+                                            -1)))
+            f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
+            f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
+                                             descending=True)[0][:5]))
+            f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
+                    .format(loss_x, loss_y, loss_w, loss_h,
+                            loss_obj, loss_noobj, loss_cls))
 
     return loss
 

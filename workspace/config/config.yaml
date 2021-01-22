@@ -8,14 +8,14 @@ classes:
 height: 416
 width: 416
 anchors:
-    - [[3, 5], [5, 3], [4, 4]]
-    - [[6, 10], [10, 6], [8, 8]]
-    - [[12, 20], [20, 12], [16, 16]]
+    - [[4, 16], [8, 8], [16, 4]]
+    - [[8, 32], [16, 16], [32, 8]]
+    - [[16, 64], [32, 32], [64, 16]]
 num_epochs: 500
 TP_IoU: 0.5
 NMS_IoU: 0.1
 confidency: 0.5
-learning_rate: 1.0e-3
+learning_rate: 1.0e-4
 weight_decay: 1.0e-2
 CUDA: True
 path:
@@ -25,4 +25,4 @@ path:
     weight: ./dataset/weight
     weight_test: ./dataset/weight_test
     initial_weight: False
-    detect_weight: ./dataset/weight_test/2021-01-14_23-24-11_0201_108.19.pt
+    detect_weight: ./dataset/weight_test/2021-01-22_02-04-48_0068_1880.07.pt
