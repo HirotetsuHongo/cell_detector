@@ -17,8 +17,9 @@ def main():
     height = cfg.config['height']
     width = cfg.config['width']
     anchors = cfg.config['anchors']
+    num_anchors = len(anchors[0])
     nms_iou = cfg.config['NMS_IoU']
-    objectness = cfg.config['objectness']
+    confidency = cfg.config['confidency']
     cuda = cfg.config['CUDA']
     weight_path = cfg.config['path']['detect_weight']
 
@@ -36,7 +37,7 @@ def main():
 
         # get user input
         with open('pipe', 'r') as pipe:
-            command = pipe.read()
+            command = pipe.read()[:-1]
 
         # condition to quit
         if command == 'q':
@@ -58,7 +59,7 @@ def main():
 
                 # load net if it is not loaded
                 if net is None:
-                    net = model.YOLOv3(num_channels, num_classes)
+                    net = model.YOLOv3(num_channels, num_classes, num_anchors)
                     if cuda:
                         net = net.cuda()
                     net.load_state_dict(torch.load(weight_path))
@@ -69,7 +70,7 @@ def main():
 
                 # predict and write bbox
                 prediction = detect.detect(net, image, anchors,
-                                           objectness, nms_iou,
+                                           confidency, nms_iou,
                                            cuda)
                 detect.write_prediction(prediction, output_path, height, width)
 
@@ -87,7 +88,7 @@ def main():
 
         # show usage
         else:
-            print('Unknown command.')
+            print('{}: Unknown command.'.format(command))
 
 
 if __name__ == '__main__':
