@@ -105,6 +105,9 @@ def main():
     # write image
     cv2.imwrite(output_path, drawed_image)
 
+    print('drawed {} in {} and saved to {}.'
+          .format(bboxes_path, image_path, output_path))
+
 
 if __name__ == '__main__':
     main()
