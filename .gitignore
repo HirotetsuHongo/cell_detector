@@ -1,3 +1,4 @@
 Pipfile.lock
 model.pt
 workspace/dataset
+*.tif
