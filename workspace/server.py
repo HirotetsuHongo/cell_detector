@@ -37,7 +37,7 @@ def main():
 
         # get user input
         with open('pipe', 'r') as pipe:
-            command = pipe.read()[:-1]
+            command = pipe.read().replace('\n', '')
 
         # condition to quit
         if command == 'q':
