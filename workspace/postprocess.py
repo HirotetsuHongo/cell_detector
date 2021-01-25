@@ -44,7 +44,7 @@ def calculate_loss(predictions, targets, anchors,
         assert len(ancs) == num_anchors
         ls = 0.0
         for i in range(batch_size):
-            ls += calc_loss(prediction[i].reshape(scale_height
+            ls += loss_core(prediction[i].reshape(scale_height
                                                   * scale_width
                                                   * num_anchors,
                                                   -1),
@@ -221,106 +221,107 @@ def suppress(prediction, confidency, iou, cuda):
     return prediction
 
 
-def calc_loss(prediction, target, input_height, input_width,
+# def calc_loss(prediction, target, input_height, input_width,
+#               scale_height, scale_width, anchors, cuda):
+#     # constants
+#     lambda_coord = 20.0
+#     lambda_obj = 1.0
+#     lambda_noobj = 0.1
+#     lambda_cls = 10.0
+#     eps = 0.1
+#
+#     # initial info
+#     num_anchors = len(anchors)
+#     num_prediction = prediction.shape[0]
+#
+#     # get stride
+#     stride_x = input_width / scale_width
+#     stride_y = input_height / scale_height
+#
+#     # get target offset and index
+#     offset_x = target[:, 0] // stride_x
+#     offset_y = target[:, 1] // stride_y
+#     pos = (offset_x + offset_y * scale_width) * num_anchors
+#     pos = pos.long()
+#     pos = torch.cat([pos + i for i in range(num_anchors)], 0)
+#
+#     # mask
+#     mask_noobj = torch.ones(num_prediction).bool()
+#     mask_noobj[pos] = False
+#
+#     # prediction with or without object
+#     prediction_obj = prediction[pos]
+#     prediction_noobj = prediction[mask_noobj]
+#
+#     # target repeat number of anchors
+#     target = target.repeat(num_anchors, 1)
+#
+#     # loss
+#     loss_x = F.mse_loss(prediction_obj[:, 0],
+#                         target[:, 0],
+#                         reduction='sum') / (stride_x ** 2)
+#     loss_y = F.mse_loss(prediction_obj[:, 1],
+#                         target[:, 1],
+#                         reduction='sum') / (stride_y ** 2)
+#     loss_w = torch.log(F.mse_loss(prediction_obj[:, 2],
+#                                   target[:, 2],
+#                                   reduction='sum') + 1)
+#     loss_h = torch.log(F.mse_loss(prediction_obj[:, 3],
+#                                   target[:, 3],
+#                                   reduction='sum') + 1)
+#     loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
+#                           torch.logit(target[:, 4], eps),
+#                           reduction='sum')
+#     loss_noobj = torch.sum(
+#                     torch.square(
+#                         torch.logit(
+#                             prediction_noobj[:, 4:], eps)))
+#     loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
+#                           torch.logit(target[:, 5:], eps),
+#                           reduction='sum')
+#
+#     loss = \
+#         lambda_coord * (loss_x + loss_y + loss_w / 2 + loss_h / 2) + \
+#         lambda_obj * loss_obj + \
+#         lambda_noobj * loss_noobj + \
+#         lambda_cls * loss_cls
+#
+#     n = torch.abs(torch.randn(1))[0]
+#     if n < 5.0e-4:
+#         with open('loss_log_{}-{}-{}-{}.txt'
+#                   .format(lambda_coord,
+#                           lambda_obj,
+#                           lambda_noobj,
+#                           lambda_cls),
+#                   'a') as f:
+#             f.write('{} x {}\n'.format(stride_x, stride_y))
+#             f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
+#                                              target.unsqueeze(-1)),
+#                                             -1)))
+#             f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
+#             f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
+#                                              descending=True)[0][:5]))
+#             f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
+#                     .format(loss_x, loss_y, loss_w, loss_h,
+#                             loss_obj, loss_noobj, loss_cls))
+#
+#     return loss
+
+
+def loss_core(prediction, target, input_height, input_width,
               scale_height, scale_width, anchors, cuda):
     # constants
-    lambda_coord = 20.0
+    lambda_coord = 10.0
     lambda_obj = 1.0
     lambda_noobj = 0.1
-    lambda_cls = 10.0
-    eps = 0.1
-
-    # initial info
-    num_anchors = len(anchors)
-    num_prediction = prediction.shape[0]
-
-    # get stride
-    stride_x = input_width / scale_width
-    stride_y = input_height / scale_height
-
-    # get target offset and index
-    offset_x = target[:, 0] // stride_x
-    offset_y = target[:, 1] // stride_y
-    pos = (offset_x + offset_y * scale_width) * num_anchors
-    pos = pos.long()
-    pos = torch.cat([pos + i for i in range(num_anchors)], 0)
-
-    # mask
-    mask_noobj = torch.ones(num_prediction).bool()
-    mask_noobj[pos] = False
-
-    # prediction with or without object
-    prediction_obj = prediction[pos]
-    prediction_noobj = prediction[mask_noobj]
-
-    # target repeat number of anchors
-    target = target.repeat(num_anchors, 1)
-
-    # loss
-    loss_x = F.mse_loss(prediction_obj[:, 0],
-                        target[:, 0],
-                        reduction='sum') / (stride_x ** 2)
-    loss_y = F.mse_loss(prediction_obj[:, 1],
-                        target[:, 1],
-                        reduction='sum') / (stride_y ** 2)
-    loss_w = torch.log(F.mse_loss(prediction_obj[:, 2],
-                                  target[:, 2],
-                                  reduction='sum') + 1)
-    loss_h = torch.log(F.mse_loss(prediction_obj[:, 3],
-                                  target[:, 3],
-                                  reduction='sum') + 1)
-    loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
-                          torch.logit(target[:, 4], eps),
-                          reduction='sum')
-    loss_noobj = torch.sum(
-                    torch.square(
-                        torch.logit(
-                            prediction_noobj[:, 4:], eps)))
-    loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
-                          torch.logit(target[:, 5:], eps),
-                          reduction='sum')
-
-    loss = \
-        lambda_coord * (loss_x + loss_y + loss_w / 2 + loss_h / 2) + \
-        lambda_obj * loss_obj + \
-        lambda_noobj * loss_noobj + \
-        lambda_cls * loss_cls
-
-#    n = torch.abs(torch.randn(1))[0]
-#    if n < 5.0e-4:
-#        with open('loss_log_{}-{}-{}-{}.txt'
-#                  .format(lambda_coord,
-#                          lambda_obj,
-#                          lambda_noobj,
-#                          lambda_cls),
-#                  'a') as f:
-#            f.write('{} x {}\n'.format(stride_x, stride_y))
-#            f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
-#                                             target.unsqueeze(-1)),
-#                                            -1)))
-#            f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
-#            f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
-#                                             descending=True)[0][:5]))
-#            f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
-#                    .format(loss_x, loss_y, loss_w, loss_h,
-#                            loss_obj, loss_noobj, loss_cls))
-
-    return loss
-
-
-def focal_loss(prediction, target, input_height, input_width,
-               scale_height, scale_width, anchors, cuda):
-    # constants
-    lambda_coord = 20.0
-    lambda_obj = 1.0
-    lambda_noobj = 0.1
-    lambda_cls = 10.0
+    lambda_cls = 5.0
     gamma = 2.0
     eps = 0.001
 
     # initial info
     num_anchors = len(anchors)
     num_prediction = prediction.shape[0]
+    num_target = target.shape[0]
 
     # get stride
     stride_x = input_width / scale_width
@@ -341,27 +342,38 @@ def focal_loss(prediction, target, input_height, input_width,
     prediction_obj = prediction[pos]
     prediction_noobj = prediction[mask_noobj]
 
-    # target repeat number of anchors
+    # repeat number of anchors
     target = target.repeat(num_anchors, 1)
+    offset_x = offset_x.repeat(num_anchors, 1).reshape(-1)
+    offset_y = offset_y.repeat(num_anchors, 1).reshape(-1)
+
+    # set anchors
+    anchors = torch.tensor(anchors)
+    if cuda:
+        anchors = anchors.cuda()
+    anchors = anchors.repeat(1, num_target)
+    anchors = anchors.reshape(-1, 2)
 
     # loss
-    loss_x = F.mse_loss(prediction_obj[:, 0],
-                        target[:, 0],
-                        reduction='sum') / (stride_x ** 2)
-    loss_y = F.mse_loss(prediction_obj[:, 1],
-                        target[:, 1],
-                        reduction='sum') / (stride_y ** 2)
-    loss_w = torch.log(F.mse_loss(prediction_obj[:, 2],
-                                  target[:, 2],
-                                  reduction='sum') + 1)
-    loss_h = torch.log(F.mse_loss(prediction_obj[:, 3],
-                                  target[:, 3],
-                                  reduction='sum') + 1)
-    loss_obj = ~ torch.sum(torch.pow(1.0 - prediction_obj[:, 4], gamma)
+    loss_x = F.mse_loss(torch.logit(prediction_obj[:, 0] / stride_x - offset_x,
+                                    eps),
+                        torch.logit(target[:, 0] / stride_x - offset_x, eps),
+                        reduction='sum')
+    loss_y = F.mse_loss(torch.logit(prediction_obj[:, 1] / stride_y - offset_y,
+                                    eps),
+                        torch.logit(target[:, 1] / stride_y - offset_y, eps),
+                        reduction='sum')
+    loss_w = F.mse_loss(torch.log(prediction_obj[:, 2] / anchors[:, 0] + eps),
+                        torch.log(target[:, 2] / anchors[:, 0] + eps),
+                        reduction='sum')
+    loss_h = F.mse_loss(torch.log(prediction_obj[:, 3] / anchors[:, 1] + eps),
+                        torch.log(target[:, 3] / anchors[:, 1] + eps),
+                        reduction='sum')
+    loss_obj = - torch.sum(torch.pow(1.0 - prediction_obj[:, 4], gamma)
                            * torch.log(prediction_obj[:, 4] + eps))
-    loss_noobj = ~ torch.sum(torch.pow(prediction_noobj[:, 4], gamma)
+    loss_noobj = - torch.sum(torch.pow(prediction_noobj[:, 4], gamma)
                              * torch.log(1.0 - prediction_noobj[:, 4] + eps))
-    loss_cls = ~ torch.sum(target[:, 5:]
+    loss_cls = - torch.sum(target[:, 5:]
                            * torch.pow(1.0 - prediction_obj[:, 5:], gamma)
                            * torch.log(prediction_obj[:, 5:] + eps)
                            + (1.0 - target[:, 5:])
@@ -369,7 +381,7 @@ def focal_loss(prediction, target, input_height, input_width,
                            * torch.log(1.0 - prediction_obj[:, 5:] + eps))
 
     loss = \
-        lambda_coord * (loss_x + loss_y + loss_w / 2 + loss_h / 2) + \
+        lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
         lambda_obj * loss_obj + \
         lambda_noobj * loss_noobj + \
         lambda_cls * loss_cls
