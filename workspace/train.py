@@ -53,7 +53,8 @@ def main():
 
     # train
     for epoch in range(num_epochs):
-        losses = []
+        losses_coord = []
+        losses_obj_cls = []
         t0 = time.time()
 
         for i in range((num_images // batch_size) + 1):
@@ -75,13 +76,14 @@ def main():
                                        cuda)
 
             # train
-            loss = train(net, optimizer,
-                         images, targets,
-                         anchors, height, width, cuda)
+            loss_coord, loss_obj_cls = train(net, optimizer,
+                                             images, targets,
+                                             anchors, height, width, cuda)
 
             # NaN
-            if torch.isnan(loss):
-                print("NaN is occured.")
+            if np.isnan(loss_coord) or np.isnan(loss_obj_cls):
+                print("NaN is occured. Loss: {:.2f} {:.2f}"
+                      .format(loss_coord, loss_obj_cls))
                 if weight_file:
                     net.load_state_dict(torch.load(weight_file))
                     optimizer = optim.AdamW(net.parameters(),
@@ -93,29 +95,39 @@ def main():
                     print("Previous weight does not exist.")
                     break
 
-            losses.append(loss)
+            losses_coord.append(loss_coord)
+            losses_obj_cls.append(loss_obj_cls)
 
         # NaN
-        if torch.isnan(loss):
+        if np.isnan(loss_coord) or np.isnan(loss_obj_cls):
             continue
 
         # calculate average of loss
-        loss = sum(losses) / len(losses)
+        loss_coord = sum(losses_coord) / len(losses_coord)
+        loss_obj_cls = sum(losses_obj_cls) / len(losses_obj_cls)
 
         # time elapse
         elapsed_time = time.time() - t0
-        print("Epoch: {}, Elapsed Time: {:.2f}s, Loss: {:.2f}"
-              .format(epoch, elapsed_time, loss))
+        print(("Epoch: {}, Elapsed Time: {:.2f}s, " +
+               "Coordinate Loss: {:.2f}, " +
+               "Objectness and Class Loss: {:.2f}, " +
+               "Loss: {:.2f}")
+              .format(epoch, elapsed_time,
+                      loss_coord, loss_obj_cls, loss_coord + loss_obj_cls))
 
         # save weight
-        text = "{}_{:0>4}_{:.2f}.pt".format(now, epoch, loss)
+        text = "{}_{:0>4}_{:.2f}.pt".format(now, epoch,
+                                            loss_coord + loss_obj_cls)
         weight_file = os.path.join(weight_dir, text)
         torch.save(net.state_dict(), weight_file)
         print("Saved {}.".format(weight_file))
 
 
 def train(net, optimizer, images, targets, anchors, height, width, cuda):
+    # assert
     assert len(images) == len(targets)
+
+    # main
     images = [image.unsqueeze(0) for image in images]
     images = torch.cat(images, 0)
     optimizer.zero_grad()
@@ -126,15 +138,15 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
                                height,
                                width,
                                cuda)
-    if torch.isnan(loss):
-        loss = torch.tensor(np.nan)
-        if cuda:
-            loss = loss.cuda()
-    else:
+    loss_coord = loss[0]
+    loss_obj_cls = loss[1]
+    loss = loss_coord + loss_obj_cls
+
+    if not torch.isnan(loss):
         loss.backward()
         optimizer.step()
 
-    return loss
+    return float(loss_coord), float(loss_obj_cls)
 
 
 if __name__ == '__main__':

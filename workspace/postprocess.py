@@ -311,10 +311,6 @@ def suppress(prediction, confidency, iou, cuda):
 def loss_core(prediction, target, input_height, input_width,
               scale_height, scale_width, anchors, cuda):
     # constants
-    lambda_coord = 10.0
-    lambda_obj = 1.0
-    lambda_noobj = 0.1
-    lambda_cls = 5.0
     gamma = 2.0
     eps = 0.001
 
@@ -380,11 +376,23 @@ def loss_core(prediction, target, input_height, input_width,
                            * torch.pow(prediction_obj[:, 5:], gamma)
                            * torch.log(1.0 - prediction_obj[:, 5:] + eps))
 
-    loss = \
-        lambda_coord * (loss_x + loss_y + loss_w + loss_h) + \
-        lambda_obj * loss_obj + \
-        lambda_noobj * loss_noobj + \
-        lambda_cls * loss_cls
+    n = torch.abs(torch.randn(1))[0]
+    if n < 1.0e-3:
+        with open('loss_log.txt', 'a') as f:
+            f.write('{} x {}\n'.format(stride_x, stride_y))
+            f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
+                                             target.unsqueeze(-1)),
+                                            -1)))
+            f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
+            f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
+                                             descending=True)[0][:5]))
+            f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
+                    .format(loss_x, loss_y, loss_w, loss_h,
+                            loss_obj, loss_noobj, loss_cls))
+
+    loss_coord = loss_x + loss_y + loss_w + loss_h
+    loss_obj_cls = loss_obj + loss_noobj + loss_cls
+    loss = torch.cat((loss_coord.unsqueeze(0), loss_obj_cls.unsqueeze(0)))
 
     return loss
 
