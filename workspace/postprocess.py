@@ -1,10 +1,9 @@
 import torch
-import torch.nn.functional as F
 
 
 def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
     assert len(predictions) == len(anchors)
-    predictions = [convert_coord(prediction, ancs, height, width, cuda)
+    predictions = [convert(prediction, ancs, height, width, cuda)
                    for (prediction, ancs) in zip(predictions, anchors)]
     predictions = [prediction
                    .reshape(prediction.shape[0],
@@ -22,8 +21,8 @@ def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
 #                f.write('\n')
     predictions = [suppress(prediction, confidency, iou, cuda)
                    for prediction in predictions]
-    predictions = [convert_conf(prediction)
-                   for prediction in predictions]
+#    predictions = [convert_conf(prediction)
+#                   for prediction in predictions]
 
     return predictions
 
@@ -56,8 +55,6 @@ def calculate_loss(predictions, targets, anchors,
                             ancs,
                             cuda)
         loss += ls / batch_size
-
-    loss /= len(predictions)
 
     return loss
 
@@ -120,12 +117,18 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
 
 
 def convert(prediction, anchors, height, width, cuda):
+    # if torch.any(torch.isnan(prediction)):
+    #     print('NaN is occured in prediction of YOLOv3.')
     prediction = convert_coord(prediction, anchors, height, width, cuda)
     prediction = convert_conf(prediction)
+    # if torch.any(torch.isnan(prediction)):
+    #     print('NaN is occured in converted prediction.')
     return prediction
 
 
 def convert_coord(prediction, anchors, height, width, cuda):
+    EPS = 1.0e+20
+
     batch_size = prediction.shape[0]
     scale_height = prediction.shape[2]
     scale_width = prediction.shape[3]
@@ -160,8 +163,8 @@ def convert_coord(prediction, anchors, height, width, cuda):
     prediction[..., 1] *= stride_y
 
     # log scale transform w and h
-    prediction[..., 2] = torch.exp(prediction[..., 2])
-    prediction[..., 3] = torch.exp(prediction[..., 3])
+    prediction[..., 2] = torch.clamp(torch.exp(prediction[..., 2]), max=EPS)
+    prediction[..., 3] = torch.clamp(torch.exp(prediction[..., 3]), max=EPS)
 
     # multiply anchors
     anchors = torch.tensor(anchors)
@@ -200,112 +203,32 @@ def suppress(prediction, confidency, iou, cuda):
     # get classes, class_scores and confidency
     classes, class_scores = select_classes(prediction)
     objectness = prediction[:, 4]
+    conf = objectness * class_scores
 
     # suppress by confidency threshold
-    conf_mask = torch.sigmoid(objectness) * torch.sigmoid(class_scores) \
-        > confidency
+    conf_mask = conf > confidency
     prediction = prediction[conf_mask]
     classes = classes[conf_mask]
     class_scores = class_scores[conf_mask]
-    objectness = objectness[conf_mask]
-    conf = objectness * class_scores
+    conf = conf[conf_mask]
 
     # non-maximum suppression
     nms_cls_mask = classes.unsqueeze(1) == classes
-    nms_conf_mask = conf.unsqueeze(1) < conf
+    nms_conf_lt_mask = conf.unsqueeze(1) < conf
+    nms_conf_eq_mask = conf.unsqueeze(1) == conf
+    indices = torch.arange(prediction.shape[0])
+    if cuda:
+        indices = indices.cuda()
+    nms_ind_mask = indices.unsqueeze(1) > indices
     nms_iou_mask = bbox_iou(prediction.unsqueeze(1), prediction) > iou
-    nms_mask = nms_cls_mask * nms_conf_mask * nms_iou_mask
+    nms_mask = \
+        nms_cls_mask * \
+        (nms_conf_lt_mask + nms_conf_eq_mask * nms_ind_mask) * \
+        nms_iou_mask
     nms_mask = ~torch.any(nms_mask, 1)
     prediction = prediction[nms_mask]
 
     return prediction
-
-
-# def calc_loss(prediction, target, input_height, input_width,
-#               scale_height, scale_width, anchors, cuda):
-#     # constants
-#     lambda_coord = 20.0
-#     lambda_obj = 1.0
-#     lambda_noobj = 0.1
-#     lambda_cls = 10.0
-#     eps = 0.1
-#
-#     # initial info
-#     num_anchors = len(anchors)
-#     num_prediction = prediction.shape[0]
-#
-#     # get stride
-#     stride_x = input_width / scale_width
-#     stride_y = input_height / scale_height
-#
-#     # get target offset and index
-#     offset_x = target[:, 0] // stride_x
-#     offset_y = target[:, 1] // stride_y
-#     pos = (offset_x + offset_y * scale_width) * num_anchors
-#     pos = pos.long()
-#     pos = torch.cat([pos + i for i in range(num_anchors)], 0)
-#
-#     # mask
-#     mask_noobj = torch.ones(num_prediction).bool()
-#     mask_noobj[pos] = False
-#
-#     # prediction with or without object
-#     prediction_obj = prediction[pos]
-#     prediction_noobj = prediction[mask_noobj]
-#
-#     # target repeat number of anchors
-#     target = target.repeat(num_anchors, 1)
-#
-#     # loss
-#     loss_x = F.mse_loss(prediction_obj[:, 0],
-#                         target[:, 0],
-#                         reduction='sum') / (stride_x ** 2)
-#     loss_y = F.mse_loss(prediction_obj[:, 1],
-#                         target[:, 1],
-#                         reduction='sum') / (stride_y ** 2)
-#     loss_w = torch.log(F.mse_loss(prediction_obj[:, 2],
-#                                   target[:, 2],
-#                                   reduction='sum') + 1)
-#     loss_h = torch.log(F.mse_loss(prediction_obj[:, 3],
-#                                   target[:, 3],
-#                                   reduction='sum') + 1)
-#     loss_obj = F.mse_loss(torch.logit(prediction_obj[:, 4], eps),
-#                           torch.logit(target[:, 4], eps),
-#                           reduction='sum')
-#     loss_noobj = torch.sum(
-#                     torch.square(
-#                         torch.logit(
-#                             prediction_noobj[:, 4:], eps)))
-#     loss_cls = F.mse_loss(torch.logit(prediction_obj[:, 5:], eps),
-#                           torch.logit(target[:, 5:], eps),
-#                           reduction='sum')
-#
-#     loss = \
-#         lambda_coord * (loss_x + loss_y + loss_w / 2 + loss_h / 2) + \
-#         lambda_obj * loss_obj + \
-#         lambda_noobj * loss_noobj + \
-#         lambda_cls * loss_cls
-#
-#     n = torch.abs(torch.randn(1))[0]
-#     if n < 5.0e-4:
-#         with open('loss_log_{}-{}-{}-{}.txt'
-#                   .format(lambda_coord,
-#                           lambda_obj,
-#                           lambda_noobj,
-#                           lambda_cls),
-#                   'a') as f:
-#             f.write('{} x {}\n'.format(stride_x, stride_y))
-#             f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
-#                                              target.unsqueeze(-1)),
-#                                             -1)))
-#             f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
-#             f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
-#                                              descending=True)[0][:5]))
-#             f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
-#                     .format(loss_x, loss_y, loss_w, loss_h,
-#                             loss_obj, loss_noobj, loss_cls))
-#
-#     return loss
 
 
 def loss_core(prediction, target, input_height, input_width,
@@ -317,7 +240,7 @@ def loss_core(prediction, target, input_height, input_width,
     # initial info
     num_anchors = len(anchors)
     num_prediction = prediction.shape[0]
-    num_target = target.shape[0]
+#    num_target = target.shape[0]
 
     # get stride
     stride_x = input_width / scale_width
@@ -337,62 +260,47 @@ def loss_core(prediction, target, input_height, input_width,
     # prediction with or without object
     prediction_obj = prediction[pos]
     prediction_noobj = prediction[mask_noobj]
+    prediction_noobj = prediction_noobj[prediction_noobj[:, 4] >= 0.5]
 
     # repeat number of anchors
     target = target.repeat(num_anchors, 1)
-    offset_x = offset_x.repeat(num_anchors, 1).reshape(-1)
-    offset_y = offset_y.repeat(num_anchors, 1).reshape(-1)
 
-    # set anchors
-    anchors = torch.tensor(anchors)
-    if cuda:
-        anchors = anchors.cuda()
-    anchors = anchors.repeat(1, num_target)
-    anchors = anchors.reshape(-1, 2)
+    # giou
+    giou = bbox_giou(prediction_obj, target)
 
     # loss
-    loss_x = F.mse_loss(torch.logit(prediction_obj[:, 0] / stride_x - offset_x,
-                                    eps),
-                        torch.logit(target[:, 0] / stride_x - offset_x, eps),
-                        reduction='sum')
-    loss_y = F.mse_loss(torch.logit(prediction_obj[:, 1] / stride_y - offset_y,
-                                    eps),
-                        torch.logit(target[:, 1] / stride_y - offset_y, eps),
-                        reduction='sum')
-    loss_w = F.mse_loss(torch.log(prediction_obj[:, 2] / anchors[:, 0] + eps),
-                        torch.log(target[:, 2] / anchors[:, 0] + eps),
-                        reduction='sum')
-    loss_h = F.mse_loss(torch.log(prediction_obj[:, 3] / anchors[:, 1] + eps),
-                        torch.log(target[:, 3] / anchors[:, 1] + eps),
-                        reduction='sum')
-    loss_obj = - torch.sum(torch.pow(1.0 - prediction_obj[:, 4], gamma)
-                           * torch.log(prediction_obj[:, 4] + eps))
-    loss_noobj = - torch.sum(torch.pow(prediction_noobj[:, 4], gamma)
-                             * torch.log(1.0 - prediction_noobj[:, 4] + eps))
+    loss_giou = torch.sum(1.0 - giou)
+    loss_obj = - (torch.sum(torch.pow(1.0 - prediction_obj[:, 4], gamma)
+                            * torch.log(prediction_obj[:, 4] + eps)) +
+                  torch.sum(torch.pow(prediction_noobj[:, 4], gamma)
+                            * torch.log(1.0 - prediction_noobj[:, 4] + eps)))
     loss_cls = - torch.sum(target[:, 5:]
                            * torch.pow(1.0 - prediction_obj[:, 5:], gamma)
                            * torch.log(prediction_obj[:, 5:] + eps)
                            + (1.0 - target[:, 5:])
                            * torch.pow(prediction_obj[:, 5:], gamma)
                            * torch.log(1.0 - prediction_obj[:, 5:] + eps))
+    loss_blc = torch.nn.functional.mse_loss(prediction_obj[:, 4],
+                                            (giou + 1.0) * 0.5,
+                                            reduction='sum')
 
     n = torch.abs(torch.randn(1))[0]
     if n < 1.0e-3:
         with open('loss_log.txt', 'a') as f:
-            f.write('{} x {}\n'.format(stride_x, stride_y))
             f.write('{}\n'.format(torch.cat((prediction_obj.unsqueeze(-1),
                                              target.unsqueeze(-1)),
                                             -1)))
-            f.write('{}\n'.format(torch.mean(prediction_noobj[:, 4])))
+            f.write('{} x {}\n'.format(stride_x, stride_y))
             f.write('{}\n'.format(torch.sort(prediction_noobj[:, 4],
                                              descending=True)[0][:5]))
-            f.write('{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n'
-                    .format(loss_x, loss_y, loss_w, loss_h,
-                            loss_obj, loss_noobj, loss_cls))
+            f.write('{}\n'.format(giou))
+            f.write('{:.6f} {:.6f} {:.6f} {:.6f}\n'
+                    .format(loss_giou, loss_obj, loss_cls, loss_blc))
 
-    loss_coord = loss_x + loss_y + loss_w + loss_h
-    loss_obj_cls = loss_obj + loss_noobj + loss_cls
-    loss = torch.cat((loss_coord.unsqueeze(0), loss_obj_cls.unsqueeze(0)))
+    loss = torch.cat((loss_giou.unsqueeze(0),
+                      loss_obj.unsqueeze(0),
+                      loss_cls.unsqueeze(0),
+                      loss_blc.unsqueeze(0)))
 
     return loss
 
@@ -404,6 +312,7 @@ def select_classes(prediction):
 
 def bbox_iou(bboxes1, bboxes2):
     eps = 0.001
+    EPS = 1.0e+20
 
     x1, y1 = bboxes1[..., 0], bboxes1[..., 1]
     w1, h1 = bboxes1[..., 2], bboxes1[..., 3]
@@ -424,13 +333,57 @@ def bbox_iou(bboxes1, bboxes2):
     xmaxi = torch.minimum(xmax1, xmax2)
     ymaxi = torch.minimum(ymax1, ymax2)
 
-    wi = torch.clamp(xmaxi - xmini, min=0.)
-    hi = torch.clamp(ymaxi - ymini, min=0.)
+    wi = torch.clamp(xmaxi - xmini, min=0.0)
+    hi = torch.clamp(ymaxi - ymini, min=0.0)
 
-    area1 = w1 * h1
-    area2 = w2 * h2
-    areai = wi * hi
+    area1 = torch.clamp(w1 * h1, max=EPS)
+    area2 = torch.clamp(w2 * h2, max=EPS)
+    areai = torch.clamp(wi * hi, max=EPS)
     areau = area1 + area2 - areai
     iou = areai / (areau + eps)
 
     return iou
+
+
+def bbox_giou(bboxes1, bboxes2):
+    eps = 0.001
+    EPS = 1.0e+20
+
+    x1, y1 = bboxes1[..., 0], bboxes1[..., 1]
+    w1, h1 = bboxes1[..., 2], bboxes1[..., 3]
+    x2, y2 = bboxes2[..., 0], bboxes2[..., 1]
+    w2, h2 = bboxes2[..., 2], bboxes2[..., 3]
+
+    xmin1 = x1 - (w1 * 0.5)
+    xmax1 = x1 + (w1 * 0.5)
+    ymin1 = y1 - (h1 * 0.5)
+    ymax1 = y1 + (h1 * 0.5)
+    xmin2 = x2 - (w2 * 0.5)
+    xmax2 = x2 + (w2 * 0.5)
+    ymin2 = y2 - (h2 * 0.5)
+    ymax2 = y2 + (h2 * 0.5)
+
+    xmini = torch.maximum(xmin1, xmin2)
+    ymini = torch.maximum(ymin1, ymin2)
+    xmaxi = torch.minimum(xmax1, xmax2)
+    ymaxi = torch.minimum(ymax1, ymax2)
+    wi = torch.clamp(xmaxi - xmini, min=0.0)
+    hi = torch.clamp(ymaxi - ymini, min=0.0)
+
+    xmine = torch.minimum(xmin1, xmin2)
+    ymine = torch.minimum(ymin1, ymin2)
+    xmaxe = torch.maximum(xmax1, xmax2)
+    ymaxe = torch.maximum(ymax1, ymax2)
+    we = torch.clamp(xmaxe - xmine, min=0.0)
+    he = torch.clamp(ymaxe - ymine, min=0.0)
+
+    area1 = torch.clamp(w1 * h1, max=EPS)
+    area2 = torch.clamp(w2 * h2, max=EPS)
+    areai = torch.clamp(wi * hi, max=EPS)
+    areae = torch.clamp(we * he, max=EPS)
+    areau = area1 + area2 - areai
+
+    iou = areai / (areau + eps)
+    giou = iou - (areae - areau) / (areae + eps)
+
+    return giou
