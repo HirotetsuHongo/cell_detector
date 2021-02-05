@@ -53,8 +53,10 @@ def main():
 
     # train
     for epoch in range(num_epochs):
-        losses_coord = []
-        losses_obj_cls = []
+        losses_giou = []
+        losses_obj = []
+        losses_prob = []
+        losses_blc = []
         t0 = time.time()
 
         for i in range((num_images // batch_size) + 1):
@@ -76,14 +78,16 @@ def main():
                                        cuda)
 
             # train
-            loss_coord, loss_obj_cls = train(net, optimizer,
-                                             images, targets,
-                                             anchors, height, width, cuda)
+            loss_giou, loss_obj, loss_cls, loss_blc = train(net, optimizer,
+                                                            images, targets,
+                                                            anchors,
+                                                            height, width,
+                                                            cuda)
 
             # NaN
-            if np.isnan(loss_coord) or np.isnan(loss_obj_cls):
-                print("NaN is occured. Loss: {:.2f} {:.2f}"
-                      .format(loss_coord, loss_obj_cls))
+            if np.isnan(loss_giou + loss_obj + loss_cls + loss_blc):
+                print("NaN is occured. Loss: {:.2f} {:.2f} {:.2f} {:.2f}"
+                      .format(loss_giou, loss_obj, loss_cls, loss_blc))
                 if weight_file:
                     net.load_state_dict(torch.load(weight_file))
                     optimizer = optim.AdamW(net.parameters(),
@@ -95,29 +99,35 @@ def main():
                     print("Previous weight does not exist.")
                     break
 
-            losses_coord.append(loss_coord)
-            losses_obj_cls.append(loss_obj_cls)
+            losses_giou.append(loss_giou)
+            losses_obj.append(loss_obj)
+            losses_prob.append(loss_cls)
+            losses_blc.append(loss_blc)
 
         # NaN
-        if np.isnan(loss_coord) or np.isnan(loss_obj_cls):
+        if np.isnan(loss_giou + loss_obj + loss_cls):
             continue
 
         # calculate average of loss
-        loss_coord = sum(losses_coord) / len(losses_coord)
-        loss_obj_cls = sum(losses_obj_cls) / len(losses_obj_cls)
+        loss_giou = sum(losses_giou) / len(losses_giou)
+        loss_obj = sum(losses_obj) / len(losses_obj)
+        loss_cls = sum(losses_prob) / len(losses_prob)
+        loss_blc = sum(losses_blc) / len(losses_blc)
+        loss = loss_giou + loss_obj + loss_cls + loss_blc
 
         # time elapse
         elapsed_time = time.time() - t0
         print(("Epoch: {}, Elapsed Time: {:.2f}s, " +
-               "Coordinate Loss: {:.2f}, " +
-               "Objectness and Class Loss: {:.2f}, " +
+               "GIoU Loss: {:.2f}, " +
+               "Objectness Loss: {:.2f}, " +
+               "Class Loss: {:.2f}, " +
+               "Balance Loss: {:.2f}, " +
                "Loss: {:.2f}")
               .format(epoch, elapsed_time,
-                      loss_coord, loss_obj_cls, loss_coord + loss_obj_cls))
+                      loss_giou, loss_obj, loss_cls, loss_blc, loss))
 
         # save weight
-        text = "{}_{:0>4}_{:.2f}.pt".format(now, epoch,
-                                            loss_coord + loss_obj_cls)
+        text = "{}_{:0>4}_{:.2f}.pt".format(now, epoch, loss)
         weight_file = os.path.join(weight_dir, text)
         torch.save(net.state_dict(), weight_file)
         print("Saved {}.".format(weight_file))
@@ -138,15 +148,17 @@ def train(net, optimizer, images, targets, anchors, height, width, cuda):
                                height,
                                width,
                                cuda)
-    loss_coord = loss[0]
-    loss_obj_cls = loss[1]
-    loss = loss_coord + loss_obj_cls
+    loss_giou = loss[0]
+    loss_obj = loss[1]
+    loss_cls = loss[2]
+    loss_blc = loss[3]
+    loss = loss_giou + loss_obj + loss_cls + loss_blc
 
     if not torch.isnan(loss):
         loss.backward()
         optimizer.step()
 
-    return float(loss_coord), float(loss_obj_cls)
+    return float(loss_giou), float(loss_obj), float(loss_cls), float(loss_blc)
 
 
 if __name__ == '__main__':

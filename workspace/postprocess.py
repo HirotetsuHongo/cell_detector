@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 
 def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
@@ -27,8 +28,7 @@ def postprocess(predictions, anchors, height, width, confidency, iou, cuda):
     return predictions
 
 
-def calculate_loss(predictions, targets, anchors,
-                   height, width, cuda):
+def calculate_loss(predictions, targets, anchors, height, width, cuda):
     predictions = [convert(prediction, ancs, height, width, cuda)
                    for (prediction, ancs) in zip(predictions, anchors)]
 
@@ -267,9 +267,10 @@ def loss_core(prediction, target, input_height, input_width,
 
     # giou
     giou = bbox_giou(prediction_obj, target)
+    scaler = 2.0 - (target[:, 2] * target[:, 3]) / (input_width * input_height)
 
     # loss
-    loss_giou = torch.sum(1.0 - giou)
+    loss_giou = torch.sum((1.0 - giou) * scaler)
     loss_obj = - (torch.sum(torch.pow(1.0 - prediction_obj[:, 4], gamma)
                             * torch.log(prediction_obj[:, 4] + eps)) +
                   torch.sum(torch.pow(prediction_noobj[:, 4], gamma)
@@ -280,9 +281,9 @@ def loss_core(prediction, target, input_height, input_width,
                            + (1.0 - target[:, 5:])
                            * torch.pow(prediction_obj[:, 5:], gamma)
                            * torch.log(1.0 - prediction_obj[:, 5:] + eps))
-    loss_blc = torch.nn.functional.mse_loss(prediction_obj[:, 4],
-                                            (giou + 1.0) * 0.5,
-                                            reduction='sum')
+    loss_blc = F.mse_loss(prediction_obj[:, 4] * 2.0 - 1.0,
+                          giou,
+                          reduction='sum')
 
     n = torch.abs(torch.randn(1))[0]
     if n < 1.0e-3:

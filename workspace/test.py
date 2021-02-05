@@ -38,8 +38,10 @@ def main():
     for weight_path in weight_paths:
         net.load_state_dict(torch.load(weight_path))
         net.eval()
-        loss_coord = 0.0
-        loss_obj_cls = 0.0
+        loss_giou = 0.0
+        loss_obj = 0.0
+        loss_cls = 0.0
+        loss_blc = 0.0
         predictions = []
         targets = []
         t0 = time.time()
@@ -67,8 +69,10 @@ def main():
                                        height,
                                        width,
                                        cuda).detach()
-            loss_coord += float(loss[0])
-            loss_obj_cls += float(loss[1])
+            loss_giou += float(loss[0])
+            loss_obj += float(loss[1])
+            loss_cls += float(loss[2])
+            loss_blc += float(loss[3])
 
             # save prediction and target as numpy array
             prediction = post.postprocess(prediction,
@@ -82,8 +86,10 @@ def main():
             targets.extend([tagt.detach() for tagt in target])
 
         # normalize loss
-        loss_coord /= num_images
-        loss_obj_cls /= num_images
+        loss_giou /= num_images
+        loss_obj /= num_images
+        loss_cls /= num_images
+        loss_blc /= num_images
 
         # calculate AP
         AP = post.calculate_AP(predictions, targets, tp_iou, cuda)
@@ -91,11 +97,16 @@ def main():
 
         elapsed_time = time.time() - t0
 
-        print('Weight: {}, Elapsed Time: {:.2f}s, '
-              .format(weight_path, elapsed_time)
-              + 'Loss: {:.2f} + {:.2f} = {:.2f}, '
-                .format(loss_coord, loss_obj_cls, loss_coord + loss_obj_cls)
-              + 'AP: ' + ', '.join(AP))
+        print(('Weight: {}, Elapsed Time: {:.2f}s, ' +
+               'GIoU Loss: {:.2f}, ' +
+               'Objectness Loss: {:.2f}, ' +
+               'Class Loss: {:.2f}, ' +
+               'Balance Loss: {:.2f}, ' +
+               'Loss: {:.2f}, ' +
+               'AP: ' + ', '.join(AP))
+              .format(weight_path, elapsed_time,
+                      loss_giou, loss_obj, loss_cls, loss_blc,
+                      loss_giou + loss_obj + loss_cls + loss_blc))
 
 
 if __name__ == '__main__':
