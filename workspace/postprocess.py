@@ -72,7 +72,7 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
                  for tagt in targets]
 
     # initialize AP
-    AP = []
+    APs = []
 
     for c in range(num_classes):
         # select positive prediction for class c from prediction
@@ -106,14 +106,21 @@ def calculate_AP(predictions, targets, tp_iou, cuda):
                       for i in indices
                       if positive_truth[i]]
         precisions = [max(precisions[i:]) for i in range(len(precisions))]
+        num_true = len(precisions) + num_true_negative
+        recalls = [float(torch.count_nonzero(positive_truth[:i+1])) / num_true
+                   for i in indices
+                   if positive_truth[i]]
+        recalls = [0.0] + recalls
 
         # calculate AP
         if precisions == []:
-            AP.append(0)
+            APs.append(0)
         else:
-            AP.append(sum(precisions) / (len(precisions) + num_true_negative))
+            # APs.append(sum(precisions) / num_true)
+            APs.append(sum([precisions[i] * (recalls[i+1] - recalls[i])
+                            for i in range(len(precisions))]))
 
-    return AP
+    return APs
 
 
 def convert(prediction, anchors, height, width, cuda):

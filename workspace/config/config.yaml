@@ -5,17 +5,17 @@ classes:
     - B
     - C
     - D
-height: 416
-width: 416
+height: 448
+width: 448
 anchors:
-    - [[4, 16], [8, 8], [16, 4]]
-    - [[8, 32], [16, 16], [32, 8]]
-    - [[16, 64], [32, 32], [64, 16]]
+    - [[5, 8], [5, 11], [5, 12]]
+    - [[7, 9], [6, 12], [5, 15]]
+    - [[8, 11], [8, 15], [10, 22]]
 num_epochs: 1000
 TP_IoU: 0.5
-NMS_IoU: 0.1
-confidency: 0.5
-learning_rate: 1.0e-5
+NMS_IoU: 0.001
+confidency: 0.6
+learning_rate: 1.0e-4
 weight_decay: 1.0e-2
 CUDA: True
 path:
@@ -24,8 +24,6 @@ path:
     image: ./dataset/image
     weight: ./dataset/weight
     weight_test: ./dataset/weight_test
-    initial_weight: ./dataset/weight_test/2021-02-04_08-45-32_0277_42.08.pt
-    # initial_weight: ./dataset/weight_test/2021-02-03_03-09-20_0662_26.50.pt
-    # initial_weight: ./dataset/weight/2021-01-31_20-42-41_0176_30.49.pt
-    # initial_weight: ./dataset/weight/2021-01-24_02-30-48_0052_107.46.pt
-    detect_weight: ./dataset/weight_test/2021-02-03_03-09-20_0662_26.50.pt
+    initial_weight: ./dataset/weight_test/2021-02-06_23-28-19_0307_37.46.pt
+    # initial_weight: ./dataset/weight_test/2021-02-04_08-45-32_0277_42.08.pt for 416x416
+    detect_weight: ./smd_weight.pt

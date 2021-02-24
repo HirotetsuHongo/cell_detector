@@ -35,6 +35,7 @@ def main():
     # assert input
     if len(sys.argv) != 3:
         print('usage: {} image_path output_path'.format(sys.argv[0]))
+        return
 
     # initialize
     if not os.path.exists('workspace/images'):

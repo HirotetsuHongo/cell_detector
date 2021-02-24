@@ -93,17 +93,18 @@ def main():
 
         # calculate AP
         AP = post.calculate_AP(predictions, targets, tp_iou, cuda)
-        AP = ['{:.2f}'.format(ap * 100) for ap in AP]
 
         elapsed_time = time.time() - t0
 
         print(('Weight: {}, Elapsed Time: {:.2f}s, ' +
-               'GIoU Loss: {:.2f}, ' +
-               'Objectness Loss: {:.2f}, ' +
-               'Class Loss: {:.2f}, ' +
-               'Balance Loss: {:.2f}, ' +
+               # 'GIoU Loss: {:.2f}, ' +
+               # 'Objectness Loss: {:.2f}, ' +
+               # 'Class Loss: {:.2f}, ' +
+               # 'Balance Loss: {:.2f}, ' +
                'Loss: {:.2f}, ' +
-               'AP: ' + ', '.join(AP))
+               'AP: ' + ', '.join(['{:.2f}'.format(ap * 100) for ap in AP])
+               + ', '
+               'mAP: {:.2f}'.format(100 * sum(AP) / len(AP)))
               .format(weight_path, elapsed_time,
                       loss_giou, loss_obj, loss_cls, loss_blc,
                       loss_giou + loss_obj + loss_cls + loss_blc))
