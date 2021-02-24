@@ -1,10 +1,10 @@
 batch_size: 6
 num_channels: 1
 classes:
-    - A
-    - B
-    - C
-    - D
+    - SMDD
+    - SMDV
+    - nrV
+    - nrD
 height: 448
 width: 448
 anchors:
@@ -23,7 +23,6 @@ path:
     test: ./dataset/test
     image: ./dataset/image
     weight: ./dataset/weight
-    weight_test: ./dataset/weight_test
-    initial_weight: ./dataset/weight_test/2021-02-06_23-28-19_0307_37.46.pt
-    # initial_weight: ./dataset/weight_test/2021-02-04_08-45-32_0277_42.08.pt for 416x416
-    detect_weight: ./smd_weight.pt
+    weight_test: ./dataset/weight
+    initial_weight: False
+    detect_weight: ./weight.pt

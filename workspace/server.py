@@ -29,11 +29,11 @@ def main():
     # main loop
     while True:
         # print usage
-        print('Available commands:')
-        print('  detect image_path output_path')
-        print('  train')
-        print('  test')
-        print('  quit | q | exit')
+        # print('Available commands:')
+        # print('  detect image_path output_path')
+        # print('  train')
+        # print('  test')
+        # print('  quit | q | exit')
 
         # get user input
         with open('pipe', 'r') as pipe:

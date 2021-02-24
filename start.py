@@ -9,6 +9,9 @@ def main():
     status_built = status_built >= 0
     if not status_built:
         sp.run('./commands/build')
+        sp.run('./commands/run')
+        sp.run(['docker', 'exec', 'cell_detector',
+                'pipenv', 'install', '--dev'])
 
     # run container
     status_exist = sp.run(['docker', 'ps', '-a'], stdout=sp.PIPE)

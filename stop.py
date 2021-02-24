@@ -3,16 +3,10 @@ import os
 
 
 def main():
-    # delete a pipe
-    pipe = 'workspace/pipe'
-    if os.path.exists(pipe):
-        os.remove(pipe)
-
     # stop container
-    status_up = sp.Popen(['docker', 'ps'], stdout=sp.PIPE)
-    status_up = sp.Popen(['grep', 'cell_detector'],
-                         stdin=status_up.stdout)
-    status_up = status_up is not None
+    status_up = sp.run(['docker', 'ps'], stdout=sp.PIPE)
+    status_up = status_up.stdout.decode('utf-8').find('cell_detector')
+    status_up = status_up >= 0
     if status_up:
         sp.run('./commands/stop')
 
