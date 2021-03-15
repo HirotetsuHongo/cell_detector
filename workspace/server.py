@@ -34,6 +34,7 @@ def main():
         # print('  train')
         # print('  test')
         # print('  quit | q | exit')
+        print('The Detector is Ready.')
 
         # get user input
         with open('pipe', 'r') as pipe:
